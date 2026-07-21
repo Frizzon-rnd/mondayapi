@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>monday.com Live Ticker</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f4f5f7;
+    color: #1a1a1a;
+  }
+
+  /* ---- Connect screen ---- */
+  #connect-screen {
+    max-width: 420px;
+    margin: 12vh auto;
+    background: #fff;
+    border: 1px solid #e3e5e8;
+    border-radius: 12px;
+    padding: 28px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  #connect-screen h1 { font-size: 18px; margin: 0 0 6px; }
+  #connect-screen p { font-size: 13px; color: #6b7280; margin: 0 0 16px; line-height: 1.5; }
+  #connect-screen input {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 13px;
+    border: 1px solid #d0d3d8;
+    border-radius: 6px;
+    margin-bottom: 10px;
+  }
+  #connect-screen button, #refresh-btn {
+    border: none;
+    background: #0073ea;
+    color: #fff;
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+  }
+  #connect-screen button:hover { background: #0060c2; }
+  #connect-error { color: #df2f4a; font-size: 12px; margin-top: 8px; display: none; }
+  #connect-screen .hint { font-size: 11px; color: #9aa0a6; margin-top: 12px; line-height: 1.5; }
+  #connect-screen a { color: #0073ea; }
+
+  /* ---- Board picker screen ---- */
+  #picker-screen {
+    display: none;
+    max-width: 640px;
+    margin: 6vh auto;
+    background: #fff;
+    border: 1px solid #e3e5e8;
+    border-radius: 12px;
+    padding: 28px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  #picker-screen h1 { font-size: 18px; margin: 0 0 6px; }
+  #picker-screen p { font-size: 13px; color: #6b7280; margin: 0 0 14px; line-height: 1.5; }
+  #picker-search {
+    width: 100%; padding: 9px 12px; font-size: 13px;
+    border: 1px solid #d0d3d8; border-radius: 6px; margin-bottom: 10px;
+  }
+  #picker-count { font-size: 12px; color: #0073ea; margin-bottom: 8px; font-weight: 700; }
+  #picker-list {
+    max-height: 360px; overflow-y: auto;
+    border: 1px solid #eef0f2; border-radius: 8px; margin-bottom: 14px;
+  }
+  .picker-group-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; color: #9aa0a6;
+    padding: 8px 12px 4px; background: #fafbfc;
+  }
+  .picker-row {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    border-bottom: 1px solid #f5f6f7; font-size: 13px; cursor: pointer;
+  }
+  .picker-row:hover { background: #f7f8fa; }
+  .picker-row.disabled { opacity: 0.4; cursor: not-allowed; }
+  .picker-row input { pointer-events: none; }
+  #picker-save-btn {
+    border: none; background: #0073ea; color: #fff; border-radius: 6px;
+    padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer; width: 100%;
+  }
+  #picker-save-btn:disabled { background: #c4d9f5; cursor: not-allowed; }
+  #picker-save-btn:not(:disabled):hover { background: #0060c2; }
+  #picker-error { color: #df2f4a; font-size: 12px; margin-bottom: 8px; }
+  #picker-cancel-btn {
+    border: 1px solid #d0d3d8; background: #fff; border-radius: 6px;
+    padding: 6px 12px; font-size: 12px; cursor: pointer; color: #6b7280; margin-top: 8px; width: 100%;
+  }
+  #edit-boards-btn {
+    border: 1px solid #d0d3d8; background: #fff; border-radius: 6px;
+    padding: 6px 12px; font-size: 12px; cursor: pointer; color: #333;
+  }
+
+  /* ---- Dashboard ---- */
+  #dashboard { display: none; }
+
+  header {
+    padding: 14px 20px;
+    background: #fff;
+    border-bottom: 1px solid #e3e5e8;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 700; }
+  header .sub { font-size: 12px; color: #6b7280; }
+  #refresh-btn { width: auto; padding: 6px 12px; font-size: 12px; background: #fff; color: #333; border: 1px solid #d0d3d8; }
+  #refresh-btn:hover { background: #f0f1f3; }
+  #disconnect-btn {
+    border: 1px solid #d0d3d8; background: #fff; border-radius: 6px;
+    padding: 6px 12px; font-size: 12px; cursor: pointer; color: #6b7280;
+  }
+
+  .ticker-wrap {
+    background: #111318;
+    color: #eaffea;
+    overflow: hidden;
+    white-space: nowrap;
+    padding: 10px 0;
+    position: relative;
+    border-bottom: 2px solid #00c875;
+  }
+  .ticker-wrap .live-label {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: #df2f4a; color: #fff; font-weight: 700; font-size: 11px;
+    letter-spacing: 0.05em; display: flex; align-items: center; padding: 0 12px; z-index: 2;
+  }
+  #ticker-track { display: inline-block; padding-left: 90px; animation: scroll-left 140s linear infinite; }
+  .ticker-wrap:hover #ticker-track { animation-play-state: paused; }
+  @keyframes scroll-left { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+  .ticker-item { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-family: "SF Mono", "Courier New", monospace; }
+  .sep { margin: 0 28px; color: #444; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+  .badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+  .time { color: #9aa; font-size: 11px; }
+
+  #people-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: #fff;
+    border-bottom: 1px solid #e3e5e8;
+    overflow-x: auto;
+    flex-wrap: wrap;
+  }
+  #people-bar .label { font-size: 11px; color: #9aa0a6; font-weight: 700; text-transform: uppercase; margin-right: 4px; }
+  .person-chip {
+    border: 1px solid #d0d3d8;
+    background: #f7f8fa;
+    border-radius: 16px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #333;
+    white-space: nowrap;
+  }
+  .person-chip:hover { background: #eef1f5; }
+  .person-chip.active { background: #0073ea; color: #fff; border-color: #0073ea; }
+
+  #checkin-panel {
+    display: none;
+    margin: 14px 20px 0;
+    background: #fffbe6;
+    border: 1px solid #f3d675;
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  #checkin-panel h3 { margin: 0 0 8px; font-size: 13px; }
+  #checkin-panel ul {
+    list-style: none;
+    margin: 0;
+    padding: 0 4px 0 0;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  #checkin-panel ul::-webkit-scrollbar { width: 6px; }
+  #checkin-panel ul::-webkit-scrollbar-thumb { background: #e0c866; border-radius: 3px; }
+  #checkin-panel li { font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f3e6b0; }
+  #checkin-panel li:last-child { border-bottom: none; }
+  #checkin-panel .checkin-meta { display: flex; gap: 8px; align-items: center; margin-bottom: 2px; }
+  #checkin-panel .checkin-snippet { color: #5c5230; font-size: 12px; line-height: 1.4; padding-left: 16px; white-space: pre-line; }
+
+  #status-line { padding: 0; font-size: 12px; color: #6b7280; }
+  #boards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px;
+    padding: 14px 20px 24px;
+  }
+  .card { background: #fff; border: 1px solid #e3e5e8; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+  .card-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
+  .count-total { font-size: 11px; font-weight: 500; color: #6b7280; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .count-chip { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 12px; }
+  .recent-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid #f0f1f3; }
+  .recent-list li { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid #f5f6f7; font-size: 12px; }
+  .recent-list li:last-child { border-bottom: none; }
+  .recent-list a { color: #1a1a1a; text-decoration: none; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .recent-list a:hover { text-decoration: underline; }
+  .muted { color: #9aa0a6; }
+  .card-error { color: #df2f4a; font-size: 12px; }
+</style>
+</head>
+<body>
+
+  <div id="connect-screen">
+    <h1>monday.com Live Ticker</h1>
+    <p>Paste your personal monday.com API token to see a live overview of your boards. Your token stays in this browser tab only — it's sent straight to this local server, which forwards it to monday.com, and nowhere else.</p>
+    <input id="token-input" type="password" placeholder="Personal API token" autocomplete="off">
+    <button id="connect-btn">Connect</button>
+    <div id="connect-error"></div>
+    <div class="hint">Find your token in monday.com under Avatar → Admin → API (or Profile → Developers → My Access Tokens).</div>
+  </div>
+
+  <div id="picker-screen">
+    <h1>Choose up to 8 boards</h1>
+    <p>Pick the boards you want tracked in the ticker and dashboard. You can change this anytime with "Edit boards."</p>
+    <input id="picker-search" type="text" placeholder="Search boards…">
+    <div id="picker-count">0 / 8 selected</div>
+    <div id="picker-error"></div>
+    <div id="picker-list"><div class="muted" style="padding:12px;">Loading your boards…</div></div>
+    <button id="picker-save-btn" disabled>Save &amp; continue</button>
+    <button id="picker-cancel-btn" style="display:none;">Cancel</button>
+  </div>
+
+  <div id="dashboard">
+    <header>
+      <div>
+        <h1>monday.com Live Ticker</h1>
+        <div class="sub" id="account-name">Boards overview</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span id="status-line">Loading…</span>
+        <button id="edit-boards-btn">Edit boards</button>
+        <button id="refresh-btn">Refresh now</button>
+        <button id="disconnect-btn">Disconnect</button>
+      </div>
+    </header>
+
+    <div class="ticker-wrap">
+      <span class="live-label">● LIVE</span>
+      <div id="ticker-track">Loading ticker…</div>
+    </div>
+
+    <div id="people-bar"><span class="label">People</span></div>
+
+    <div id="checkin-panel">
+      <h3 id="checkin-title">Check-ins</h3>
+      <ul id="checkin-list"></ul>
+    </div>
+
+    <div id="boards-grid"></div>
+  </div>
+
+<script>
+const CHECKIN_BOARD_PATTERN = /check[\s-]?in/i;
+// Auto-generated subitem boards are never something you'd deliberately
+// pick, so they're hidden from the picker itself (pure noise reduction,
+// not a "which boards matter" judgment call).
+const SUBITEMS_PATTERN = /^subitems of\b/i;
+const MAX_TRACKED_BOARDS = 8;
+const STORAGE_KEY_BOARDS = 'monday_selected_boards';
+
+let TOKEN = sessionStorage.getItem('monday_token') || '';
+// The user's chosen boards — picked once via the picker screen, persisted
+// in this browser (not sent anywhere), editable anytime via "Edit boards".
+// A fixed, small, explicitly-chosen set is what keeps every request well
+// under monday.com's per-query complexity limit (fetching "everything
+// active" caused boards to randomly appear/disappear between refreshes).
+let selectedBoardIds = loadSelectedBoardIds();
+let pickerBoardsCache = null; // [{id,name,workspaceName}] — full list, fetched once per session
+let pickerSelection = new Set(); // in-progress selection while the picker is open
+
+let boardsData = [];   // [{id,name,columns,items:[...]}]
+let peopleList = [];   // [{name, count}]
+let selectedPerson = null;
+let personDataCache = {}; // { personName: { boardId: [items...] } }
+let checkinCache = {};    // { personName: [{boardName, updates:[{id,text_body,created_at,creator}]}] }
+let recentUpdates = [];  // account-wide comments feed for the ticker
+
+function loadSelectedBoardIds() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_BOARDS);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+function saveSelectedBoardIds(ids) {
+  selectedBoardIds = ids;
+  localStorage.setItem(STORAGE_KEY_BOARDS, JSON.stringify(ids));
+}
+
+// Boards used for the ticker/cards/people counts — everything except
+// check-in rosters, which get their own dedicated handling below because
+// their "activity" lives in comments, not column values.
+function projectBoards() {
+  return boardsData.filter(b => !b.isCheckin);
+}
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function statusColor(text) {
+  if (!text) return '#9aa0a6';
+  const t = String(text).toLowerCase();
+  if (t.includes('done') || t.includes('complet') || t.includes('closed')) return '#00c875';
+  if (t.includes('stuck') || t.includes('block') || t.includes('hold')) return '#df2f4a';
+  if (t.includes('progress') || t.includes('working') || t.includes('initiat')) return '#fdab3d';
+  if (t.includes('not start')) return '#c4c4c4';
+  if (t.includes('review') || t.includes('recurring')) return '#037f4c';
+  return '#784bd1';
+}
+
+function timeAgo(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const diffMs = Date.now() - d.getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  const days = Math.floor(hrs / 24);
+  return days + 'd ago';
+}
+
+async function mondayQuery(query, variables) {
+  const res = await fetch('/monday-api', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: TOKEN, query, variables: variables || {} })
+  });
+  const json = await res.json();
+  if (json.errors) throw new Error(json.errors.map(e => e.message).join('; '));
+  if (json.error) throw new Error(json.error);
+  return json.data;
+}
+
+function findStatusColumns(columns) {
+  return columns.filter(c => c.type === 'status' || c.type === 'color').map(c => c.id);
+}
+function findPeopleColumns(columns) {
+  return columns.filter(c => c.type === 'people' || c.type === 'multiple-person').map(c => c.id);
+}
+
+function itemStatus(item, statusColIds) {
+  for (const id of statusColIds) {
+    const v = item.column_values.find(cv => cv.id === id);
+    if (v && v.text) return v.text;
+  }
+  return null;
+}
+function itemPeople(item, peopleColIds) {
+  const names = new Set();
+  for (const id of peopleColIds) {
+    const v = item.column_values.find(cv => cv.id === id);
+    if (v && v.text) {
+      v.text.split(',').map(s => s.trim()).filter(Boolean).forEach(n => names.add(n));
+    }
+  }
+  return [...names];
+}
+
+let refreshTimer = null;
+let accountLabel = 'Boards overview';
+
+async function connect() {
+  const errEl = document.getElementById('connect-error');
+  errEl.style.display = 'none';
+  const token = document.getElementById('token-input').value.trim();
+  if (!token) return;
+  TOKEN = token;
+
+  try {
+    const me = await mondayQuery('query { me { name } }');
+    accountLabel = (me && me.me && me.me.name ? me.me.name + ' — ' : '') + 'Boards overview';
+    document.getElementById('account-name').textContent = accountLabel;
+
+    sessionStorage.setItem('monday_token', TOKEN);
+    document.getElementById('connect-screen').style.display = 'none';
+
+    if (!selectedBoardIds.length) {
+      // First time (or selection was cleared): make them pick before
+      // showing an empty dashboard.
+      await openPicker(false);
+    } else {
+      showDashboard();
+    }
+  } catch (e) {
+    errEl.textContent = 'Could not connect: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+function showDashboard() {
+  document.getElementById('picker-screen').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  loadAll();
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(loadAll, 5 * 60 * 1000);
+}
+
+// ---- Board picker ----
+
+async function openPicker(allowCancel) {
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('picker-screen').style.display = 'block';
+  document.getElementById('picker-cancel-btn').style.display = allowCancel ? 'block' : 'none';
+  document.getElementById('picker-search').value = '';
+  pickerSelection = new Set(selectedBoardIds.map(String));
+
+  const listEl = document.getElementById('picker-list');
+  const errEl = document.getElementById('picker-error');
+  errEl.textContent = '';
+
+  if (!pickerBoardsCache) {
+    listEl.innerHTML = '<div class="muted" style="padding:12px;">Loading your boards…</div>';
+    try {
+      const data = await mondayQuery(`
+        query { boards (limit: 200) { id name state workspace { name } } }
+      `);
+      pickerBoardsCache = (data.boards || [])
+        .filter(b => b.state === 'active')
+        .filter(b => !SUBITEMS_PATTERN.test(b.name))
+        .map(b => ({
+          id: String(b.id),
+          name: b.name,
+          workspaceName: (b.workspace && b.workspace.name) || 'No workspace'
+        }))
+        .sort((a, b) => a.workspaceName.localeCompare(b.workspaceName) || a.name.localeCompare(b.name));
+    } catch (e) {
+      errEl.textContent = 'Could not load boards: ' + e.message;
+      listEl.innerHTML = '';
+      return;
+    }
+  }
+
+  renderPickerList('');
+}
+
+function renderPickerList(searchTerm) {
+  const listEl = document.getElementById('picker-list');
+  const term = searchTerm.trim().toLowerCase();
+  const filtered = pickerBoardsCache.filter(b => !term || b.name.toLowerCase().includes(term));
+
+  let lastGroup = null;
+  const atMax = pickerSelection.size >= MAX_TRACKED_BOARDS;
+
+  listEl.innerHTML = filtered.map(b => {
+    const checked = pickerSelection.has(b.id);
+    const disabled = !checked && atMax;
+    const groupHtml = b.workspaceName !== lastGroup
+      ? `<div class="picker-group-label">${escapeHtml(b.workspaceName)}</div>`
+      : '';
+    lastGroup = b.workspaceName;
+    return `${groupHtml}
+      <div class="picker-row ${disabled ? 'disabled' : ''}" data-id="${b.id}">
+        <input type="checkbox" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
+        <span>${escapeHtml(b.name)}</span>
+      </div>`;
+  }).join('') || '<div class="muted" style="padding:12px;">No boards match.</div>';
+
+  listEl.querySelectorAll('.picker-row').forEach(row => {
+    row.addEventListener('click', () => {
+      if (row.classList.contains('disabled')) return;
+      const id = row.getAttribute('data-id');
+      if (pickerSelection.has(id)) {
+        pickerSelection.delete(id);
+      } else if (pickerSelection.size < MAX_TRACKED_BOARDS) {
+        pickerSelection.add(id);
+      }
+      renderPickerList(document.getElementById('picker-search').value);
+    });
+  });
+
+  document.getElementById('picker-count').textContent = `${pickerSelection.size} / ${MAX_TRACKED_BOARDS} selected`;
+  document.getElementById('picker-save-btn').disabled = pickerSelection.size === 0;
+}
+
+async function loadAll() {
+  const statusEl = document.getElementById('status-line');
+
+  if (!selectedBoardIds.length) {
+    statusEl.textContent = 'No boards selected.';
+    boardsData = [];
+    render();
+    return;
+  }
+
+  statusEl.textContent = 'Loading boards…';
+
+  try {
+    const ids = selectedBoardIds;
+
+    const detail = await mondayQuery(`
+      query ($ids: [ID!]) {
+        boards (ids: $ids) {
+          id
+          name
+          columns { id title type }
+          items_page (
+            limit: 25
+            query_params: { order_by: [{ column_id: "__last_updated__", direction: desc }] }
+          ) {
+            items { id name updated_at url column_values { id text } }
+          }
+        }
+      }
+    `, { ids });
+
+    boardsData = (detail.boards || []).map(b => {
+      const items = (b.items_page && b.items_page.items) || [];
+      // True "last activity" for this board, based on its own items —
+      // NOT the board's metadata updated_at, which can reflect structural
+      // changes (views, columns) rather than real item activity.
+      const latestActivity = items.length
+        ? Math.max(...items.map(it => new Date(it.updated_at).getTime()))
+        : 0;
+      return {
+        id: b.id,
+        name: b.name,
+        statusCols: findStatusColumns(b.columns),
+        peopleCols: findPeopleColumns(b.columns),
+        isCheckin: CHECKIN_BOARD_PATTERN.test(b.name),
+        items,
+        latestActivity
+      };
+    });
+
+    // Boards with the most recent real activity float to the top.
+    boardsData.sort((a, b) => b.latestActivity - a.latestActivity);
+
+    buildPeopleList();
+    personDataCache = {}; // board data changed, drop any cached per-person results
+    checkinCache = {};
+
+    try {
+      recentUpdates = await fetchRecentUpdates();
+    } catch (e) {
+      recentUpdates = [];
+    }
+
+    render();
+    statusEl.textContent = 'Last updated ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    statusEl.textContent = 'Error loading boards: ' + e.message;
+  }
+}
+
+// The ticker shows real conversation activity (comments), not column
+// changes — monday.com doesn't touch an item's updated_at when someone
+// comments, so a column-based feed misses check-in-style activity
+// entirely (see fetchCheckinForPerson). This single root-level query
+// returns the whole ACCOUNT's recent comments in one request — monday.com
+// doesn't support filtering this query by board/workspace directly, so we
+// filter client-side down to just our tracked boards.
+async function fetchRecentUpdates() {
+  const trackedIds = new Set(selectedBoardIds.map(String));
+  const data = await mondayQuery(`
+    query {
+      updates(limit: 100) {
+        id
+        text_body
+        created_at
+        creator { name }
+        item { name board { id name } }
+      }
+    }
+  `);
+  return (data.updates || []).filter(u => {
+    const board = u.item && u.item.board;
+    return board && trackedIds.has(String(board.id));
+  });
+}
+
+// Fetches each person's own most-recent items directly from monday.com,
+// instead of relying on the generic "25 most recent items per board" list
+// (which can miss a specific person's latest entry if others were more
+// recently updated on the same board). Uses one combined GraphQL request
+// with aliases so it's still a single network round trip.
+// Only applies to normal project boards — see fetchCheckinForPerson for
+// the check-in roster, which needs completely different handling.
+async function fetchPersonAcrossBoards(personName) {
+  const targets = projectBoards().filter(b => b.peopleCols.length > 0);
+  if (!targets.length) return {};
+
+  const escaped = JSON.stringify(personName);
+  const parts = targets.map((b, idx) => {
+    const rules = b.peopleCols.map(id => `{ column_id: "${id}", compare_value: [${escaped}], operator: contains_text }`);
+    return `
+      p${idx}: boards(ids: [${b.id}]) {
+        items_page(
+          limit: 15
+          query_params: {
+            operator: or
+            rules: [${rules.join(', ')}]
+            order_by: [{ column_id: "__last_updated__", direction: desc }]
+          }
+        ) {
+          items { id name updated_at url column_values { id text } }
+        }
+      }
+    `;
+  });
+
+  const data = await mondayQuery(`query { ${parts.join('\n')} }`);
+
+  const result = {};
+  targets.forEach((b, idx) => {
+    const boardResp = data[`p${idx}`];
+    const items = (boardResp && boardResp[0] && boardResp[0].items_page && boardResp[0].items_page.items) || [];
+    result[b.id] = items;
+  });
+  return result;
+}
+
+// Check-in boards have one item per employee (a roster), and the actual
+// daily check-in is posted as a COMMENT on that person's item — monday.com
+// does not update the item's updated_at when a comment is added, only
+// when a column value changes. So we look the person's item up by name,
+// then read its comment thread (`updates`) directly, and treat the most
+// recent comment as their latest check-in.
+async function fetchCheckinForPerson(personName) {
+  const checkinBoards = boardsData.filter(b => b.isCheckin);
+  if (!checkinBoards.length) return [];
+
+  const escaped = JSON.stringify(personName);
+  const parts = checkinBoards.map((b, idx) => `
+    c${idx}: boards(ids: [${b.id}]) {
+      items_page(
+        limit: 1
+        query_params: {
+          rules: [{ column_id: "name", compare_value: [${escaped}], operator: contains_text }]
+        }
+      ) {
+        items {
+          id
+          name
+          updates(limit: 5) {
+            id
+            text_body
+            created_at
+            creator { name }
+          }
+        }
+      }
+    }
+  `);
+
+  const data = await mondayQuery(`query { ${parts.join('\n')} }`);
+
+  const results = [];
+  checkinBoards.forEach((b, idx) => {
+    const boardResp = data[`c${idx}`];
+    const item = boardResp && boardResp[0] && boardResp[0].items_page && boardResp[0].items_page.items[0];
+    if (item) {
+      const updates = [...(item.updates || [])].sort(
+        (a, c) => new Date(c.created_at) - new Date(a.created_at)
+      );
+      results.push({ boardName: b.name, itemName: item.name, updates });
+    }
+  });
+  return results;
+}
+
+// Returns the items to display for a board, respecting the current
+// person filter (using the targeted per-person fetch) or falling back
+// to the generic recent-items list when no one is selected.
+function itemsForBoard(b) {
+  if (selectedPerson) {
+    const cache = personDataCache[selectedPerson];
+    return (cache && cache[b.id]) || [];
+  }
+  return b.items;
+}
+
+async function selectPerson(name) {
+  selectedPerson = selectedPerson === name ? null : name;
+  renderPeopleBar();
+
+  if (!selectedPerson) {
+    renderTicker();
+    renderCheckinPanel();
+    renderBoards();
+    return;
+  }
+
+  const statusEl = document.getElementById('status-line');
+  const prevStatus = statusEl.textContent;
+  const needsItems = !personDataCache[selectedPerson];
+  const needsCheckin = !checkinCache[selectedPerson];
+
+  if (needsItems || needsCheckin) {
+    statusEl.textContent = `Loading ${selectedPerson}'s items…`;
+    const [itemsResult, checkinResult] = await Promise.all([
+      needsItems ? fetchPersonAcrossBoards(selectedPerson).catch(() => ({})) : Promise.resolve(personDataCache[selectedPerson]),
+      needsCheckin ? fetchCheckinForPerson(selectedPerson).catch(() => []) : Promise.resolve(checkinCache[selectedPerson])
+    ]);
+    personDataCache[selectedPerson] = itemsResult;
+    checkinCache[selectedPerson] = checkinResult;
+    statusEl.textContent = prevStatus;
+  }
+
+  renderTicker();
+  renderCheckinPanel();
+  renderBoards();
+}
+
+function buildPeopleList() {
+  const counts = {};
+  projectBoards().forEach(b => {
+    b.items.forEach(it => {
+      itemPeople(it, b.peopleCols).forEach(name => {
+        counts[name] = (counts[name] || 0) + 1;
+      });
+    });
+  });
+  peopleList = Object.entries(counts)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 30);
+}
+
+function render() {
+  renderPeopleBar();
+  renderTicker();
+  renderCheckinPanel();
+  renderBoards();
+}
+
+function renderPeopleBar() {
+  const bar = document.getElementById('people-bar');
+  const chips = peopleList.map(p => `
+    <span class="person-chip ${p.name === selectedPerson ? 'active' : ''}" data-name="${escapeHtml(p.name)}">
+      ${escapeHtml(p.name)} · ${p.count}
+    </span>
+  `).join('');
+  bar.innerHTML = '<span class="label">People</span>' + chips;
+  bar.querySelectorAll('.person-chip').forEach(el => {
+    el.addEventListener('click', () => {
+      const name = el.getAttribute('data-name');
+      selectPerson(name);
+    });
+  });
+}
+
+function renderTicker() {
+  // Comments feed, not column changes — reflects real conversation/check-in
+  // activity. When a person is selected, narrow it to their own comments.
+  const filtered = selectedPerson
+    ? recentUpdates.filter(u => u.creator && u.creator.name === selectedPerson)
+    : recentUpdates;
+  const sorted = [...filtered]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 25);
+
+  // Slower, steadier scroll for longer lists so it stays readable.
+  const track = document.getElementById('ticker-track');
+  track.style.animationDuration = Math.max(180, sorted.length * 12) + 's';
+
+  const oneRun = sorted.map(u => {
+    const boardName = (u.item && u.item.board && u.item.board.name) || '';
+    const itemName = (u.item && u.item.name) || '';
+    const author = u.creator ? u.creator.name : 'Someone';
+    const raw = (u.text_body || '').trim().replace(/\s+/g, ' ');
+    const snippet = raw.slice(0, 90) + (raw.length > 90 ? '…' : '');
+    return `
+      <span class="ticker-item">
+        <span class="dot" style="background:#00c875"></span>
+        <strong>${escapeHtml(author)}</strong> on <strong>${escapeHtml(boardName)}</strong> — ${escapeHtml(itemName)}${snippet ? ': ' + escapeHtml(snippet) : ''}
+        <span class="time">${timeAgo(u.created_at)}</span>
+      </span>
+    `;
+  }).join('<span class="sep">•</span>');
+
+  track.innerHTML = sorted.length
+    ? (oneRun + '<span class="sep">•</span>' + oneRun)
+    : 'No recent comments found.';
+}
+
+function renderCheckinPanel() {
+  const panel = document.getElementById('checkin-panel');
+  const hasCheckinBoard = boardsData.some(b => b.isCheckin);
+
+  if (!selectedPerson || !hasCheckinBoard) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  const perBoard = checkinCache[selectedPerson] || [];
+  const allUpdates = [];
+  perBoard.forEach(entry => {
+    entry.updates.forEach(u => allUpdates.push(u));
+  });
+  allUpdates.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  document.getElementById('checkin-title').textContent = `${selectedPerson} — check-ins`;
+  document.getElementById('checkin-list').innerHTML = allUpdates.slice(0, 5).map(u => {
+    const snippet = (u.text_body || '').trim().slice(0, 220);
+    return `
+      <li>
+        <div class="checkin-meta">
+          <span class="dot" style="background:#00c875"></span>
+          <strong>${escapeHtml(u.creator ? u.creator.name : selectedPerson)}</strong>
+          <span class="time">${timeAgo(u.created_at)}</span>
+        </div>
+        ${snippet ? `<div class="checkin-snippet">${escapeHtml(snippet)}${(u.text_body || '').length > 220 ? '…' : ''}</div>` : ''}
+      </li>
+    `;
+  }).join('') || '<li class="muted">No check-in comments found for this person yet.</li>';
+  panel.style.display = 'block';
+}
+
+// The check-in "board" itself is just a static roster (one item per
+// employee, with a stale updated_at) — so instead of a normal item-based
+// card, this builds a "who's checked in recently" summary from the real
+// comment activity (recentUpdates), one row per person's latest comment.
+function renderCheckinBoardCard() {
+  const checkinBoards = boardsData.filter(b => b.isCheckin);
+  if (!checkinBoards.length) return '';
+
+  const checkinBoardNames = new Set(checkinBoards.map(b => b.name));
+  const updates = recentUpdates.filter(u =>
+    u.item && u.item.board && checkinBoardNames.has(u.item.board.name) &&
+    (!selectedPerson || (u.creator && u.creator.name === selectedPerson))
+  );
+
+  const latestByPerson = {};
+  updates.forEach(u => {
+    const name = u.creator ? u.creator.name : 'Unknown';
+    if (!latestByPerson[name] || new Date(u.created_at) > new Date(latestByPerson[name].created_at)) {
+      latestByPerson[name] = u;
+    }
+  });
+
+  const list = Object.values(latestByPerson)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 10);
+
+  const rows = list.map(u => {
+    const snippet = (u.text_body || '').trim().replace(/\s+/g, ' ').slice(0, 70);
+    return `
+      <li>
+        <span class="dot" style="background:#00c875"></span>
+        <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+          <strong>${escapeHtml(u.creator ? u.creator.name : 'Unknown')}</strong>${snippet ? ' — ' + escapeHtml(snippet) : ''}
+        </span>
+        <span class="time">${timeAgo(u.created_at)}</span>
+      </li>
+    `;
+  }).join('') || '<li class="muted">No check-in comments found yet.</li>';
+
+  return `
+    <div class="card">
+      <div class="card-title"><span>Daily - Check in / Check out</span><span class="count-total">${list.length} people</span></div>
+      <ul class="recent-list">${rows}</ul>
+    </div>
+  `;
+}
+
+function renderBoards() {
+  const checkinCardHtml = renderCheckinBoardCard();
+  const cardsHtml = projectBoards().map(b => {
+    const items = itemsForBoard(b);
+    const counts = {};
+    items.forEach(it => {
+      const s = itemStatus(it, b.statusCols) || 'No status';
+      counts[s] = (counts[s] || 0) + 1;
+    });
+    const countsHtml = Object.entries(counts)
+      .sort((a, b2) => b2[1] - a[1])
+      .map(([label, count]) => `
+        <span class="count-chip" style="background:${statusColor(label)}26;color:${statusColor(label)}">${escapeHtml(label)} · ${count}</span>
+      `).join('');
+    const recent = [...items]
+      .sort((a, b2) => new Date(b2.updated_at) - new Date(a.updated_at))
+      .slice(0, 5)
+      .map(it => `
+        <li>
+          <span class="dot" style="background:${statusColor(itemStatus(it, b.statusCols))}"></span>
+          <a href="${escapeHtml(it.url || '#')}" target="_blank" rel="noopener">${escapeHtml(it.name)}</a>
+          <span class="time">${timeAgo(it.updated_at)}</span>
+        </li>
+      `).join('');
+
+    if (selectedPerson && items.length === 0) return '';
+
+    return `
+      <div class="card">
+        <div class="card-title"><span>${escapeHtml(b.name)}</span><span class="count-total">${items.length} items</span></div>
+        <div class="chips">${countsHtml || '<span class="muted">No status data</span>'}</div>
+        <ul class="recent-list">${recent || '<li class="muted">No items</li>'}</ul>
+      </div>
+    `;
+  }).join('');
+
+  const combined = checkinCardHtml + cardsHtml;
+  document.getElementById('boards-grid').innerHTML = combined || '<p class="muted" style="padding:0 4px;">No boards to show.</p>';
+}
+
+document.getElementById('connect-btn').addEventListener('click', connect);
+document.getElementById('token-input').addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
+document.getElementById('refresh-btn').addEventListener('click', loadAll);
+document.getElementById('disconnect-btn').addEventListener('click', () => {
+  sessionStorage.removeItem('monday_token');
+  location.reload();
+});
+document.getElementById('edit-boards-btn').addEventListener('click', () => openPicker(true));
+document.getElementById('picker-search').addEventListener('input', e => renderPickerList(e.target.value));
+document.getElementById('picker-cancel-btn').addEventListener('click', () => showDashboard());
+document.getElementById('picker-save-btn').addEventListener('click', () => {
+  saveSelectedBoardIds([...pickerSelection]);
+  showDashboard();
+});
+
+// Auto-connect if a token is already in this tab's session
+if (TOKEN) {
+  document.getElementById('token-input').value = TOKEN;
+  connect();
+}
+</script>
+</body>
+</html>
