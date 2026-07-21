@@ -124,28 +124,54 @@
     padding: 6px 12px; font-size: 12px; cursor: pointer; color: #6b7280;
   }
 
-  .ticker-wrap {
-    background: #111318;
-    color: #eaffea;
-    overflow: hidden;
-    white-space: nowrap;
-    padding: 10px 0;
-    position: relative;
-    border-bottom: 2px solid #00c875;
-  }
-  .ticker-wrap .live-label {
-    position: absolute; left: 0; top: 0; bottom: 0;
-    background: #df2f4a; color: #fff; font-weight: 700; font-size: 11px;
-    letter-spacing: 0.05em; display: flex; align-items: center; padding: 0 12px; z-index: 2;
-  }
-  #ticker-track { display: inline-block; padding-left: 90px; animation: scroll-left 140s linear infinite; }
-  .ticker-wrap:hover #ticker-track { animation-play-state: paused; }
-  @keyframes scroll-left { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-  .ticker-item { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-family: "SF Mono", "Courier New", monospace; }
-  .sep { margin: 0 28px; color: #444; }
   .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
   .badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
   .time { color: #9aa; font-size: 11px; }
+
+  .dashboard-body { display: flex; align-items: flex-start; gap: 14px; padding: 0 20px 24px; }
+  .main-col { flex: 1; min-width: 0; }
+
+  /* ---- Live comment feed sidebar ---- */
+  #comment-feed-col {
+    width: 340px;
+    flex-shrink: 0;
+    background: #fff;
+    border-radius: 10px;
+    border: 1px solid #e3e5e8;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    position: sticky;
+    top: 14px;
+    max-height: calc(100vh - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #comment-feed-header {
+    padding: 12px 14px;
+    border-bottom: 1px solid #e3e5e8;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #1a1a1a;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  #comment-feed-header .live-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: #00c875;
+    animation: cf-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes cf-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  #comment-feed-list { flex: 1; overflow-y: auto; padding: 6px 10px; }
+  #comment-feed-list::-webkit-scrollbar { width: 6px; }
+  #comment-feed-list::-webkit-scrollbar-thumb { background: #d0d3d8; border-radius: 3px; }
+  .comment-row { padding: 8px 4px; border-bottom: 1px solid #f0f1f3; color: #1a1a1a; }
+  .comment-row:last-child { border-bottom: none; }
+  .comment-row .cf-meta { display: flex; align-items: baseline; gap: 6px; margin-bottom: 2px; }
+  .comment-row .cf-author { font-size: 12px; font-weight: 700; }
+  .comment-row .cf-board { font-size: 11px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .comment-row .cf-time { margin-left: auto; font-size: 11px; color: #9aa0a6; flex-shrink: 0; }
+  .comment-row .cf-item { font-size: 11px; color: #6b7280; margin-bottom: 3px; }
+  .comment-row .cf-snippet { font-size: 12px; line-height: 1.4; white-space: pre-line; color: #333; }
 
   #people-bar {
     display: flex;
@@ -261,19 +287,23 @@
       </div>
     </header>
 
-    <div class="ticker-wrap">
-      <span class="live-label">● LIVE</span>
-      <div id="ticker-track">Loading ticker…</div>
+    <div class="dashboard-body">
+      <div class="main-col">
+        <div id="people-bar"><span class="label">People</span></div>
+
+        <div id="checkin-panel">
+          <h3 id="checkin-title">Check-ins</h3>
+          <ul id="checkin-list"></ul>
+        </div>
+
+        <div id="boards-grid"></div>
+      </div>
+
+      <div id="comment-feed-col">
+        <div id="comment-feed-header"><span class="live-dot"></span> Live comments</div>
+        <div id="comment-feed-list"></div>
+      </div>
     </div>
-
-    <div id="people-bar"><span class="label">People</span></div>
-
-    <div id="checkin-panel">
-      <h3 id="checkin-title">Check-ins</h3>
-      <ul id="checkin-list"></ul>
-    </div>
-
-    <div id="boards-grid"></div>
   </div>
 
 <script>
@@ -310,7 +340,23 @@ let peopleList = [];   // [{name, count}]
 let selectedPerson = null;
 let personDataCache = {}; // { personName: { boardId: [items...] } }
 let checkinCache = {};    // { personName: [{boardName, updates:[{id,text_body,created_at,creator}]}] }
-let recentUpdates = [];  // account-wide comments feed for the ticker
+let recentUpdates = [];  // latest account-wide comments snapshot, refreshed on every feed poll
+
+// Live comment feed (right-hand sidebar): unlike recentUpdates (a snapshot,
+// replaced each poll), commentFeed only ever grows — new comments are merged
+// in, nothing already shown gets dropped just because monday.com's API
+// window moved past it. This is what fixes comments (e.g. check-in board
+// comments) appearing "an hour old": the old ticker re-rendered whatever the
+// latest 100-comment account-wide snapshot contained, so a comment could be
+// crowded out of that window by unrelated activity elsewhere in the account
+// before you ever saw it. Polling every few seconds and accumulating means
+// we very likely catch it while it's still in that window, then keep it
+// regardless of what happens afterward.
+let commentFeed = [];
+let seenUpdateIds = new Set();
+let feedPollTimer = null;
+const COMMENT_POLL_MS = 9000;
+const COMMENT_FEED_MAX = 300;
 
 function loadSelectedBoardIds() {
   try {
@@ -324,6 +370,10 @@ function loadSelectedBoardIds() {
 function saveSelectedBoardIds(ids) {
   selectedBoardIds = ids;
   localStorage.setItem(STORAGE_KEY_BOARDS, JSON.stringify(ids));
+  // Board scope changed — the accumulated feed may contain comments from
+  // boards no longer tracked, so start it fresh rather than filter it.
+  commentFeed = [];
+  seenUpdateIds = new Set();
 }
 
 function loadSelectedWorkspaceId() {
@@ -447,6 +497,8 @@ function showDashboard() {
   loadAll();
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(loadAll, 5 * 60 * 1000);
+  if (feedPollTimer) clearInterval(feedPollTimer);
+  feedPollTimer = setInterval(refreshCommentFeed, COMMENT_POLL_MS);
 }
 
 // ---- Workspace picker ----
@@ -641,26 +693,21 @@ async function loadAll() {
     personDataCache = {}; // board data changed, drop any cached per-person results
     checkinCache = {};
 
-    try {
-      recentUpdates = await fetchRecentUpdates();
-    } catch (e) {
-      recentUpdates = [];
-    }
-
-    render();
+    await refreshCommentFeed();
     statusEl.textContent = 'Last updated ' + new Date().toLocaleTimeString();
   } catch (e) {
     statusEl.textContent = 'Error loading boards: ' + e.message;
   }
 }
 
-// The ticker shows real conversation activity (comments), not column
-// changes — monday.com doesn't touch an item's updated_at when someone
-// comments, so a column-based feed misses check-in-style activity
-// entirely (see fetchCheckinForPerson). This single root-level query
-// returns the whole ACCOUNT's recent comments in one request — monday.com
-// doesn't support filtering this query by board/workspace directly, so we
-// filter client-side down to just our tracked boards.
+// Comments (monday.com "updates") reflect real conversation/check-in
+// activity that column-based updated_at misses entirely (see
+// fetchCheckinForPerson). This root-level query returns the whole ACCOUNT's
+// recent comments in one request — monday.com doesn't support filtering it
+// by board/workspace server-side, so we filter client-side down to just our
+// tracked boards. It's a light query (no board/item nesting), which is what
+// makes it safe to poll every few seconds for the live feed, unlike the
+// heavier per-board loadAll() query above.
 async function fetchRecentUpdates() {
   const trackedIds = new Set(selectedBoardIds.map(String));
   const data = await mondayQuery(`
@@ -678,6 +725,39 @@ async function fetchRecentUpdates() {
     const board = u.item && u.item.board;
     return board && trackedIds.has(String(board.id));
   });
+}
+
+// Merges freshly-fetched updates into the ever-growing commentFeed, keeping
+// anything already shown even after it scrolls out of monday.com's 100-item
+// snapshot window. Trims from the tail (oldest) once over the cap.
+function mergeIntoCommentFeed(updates) {
+  let addedAny = false;
+  updates.forEach(u => {
+    if (!seenUpdateIds.has(u.id)) {
+      seenUpdateIds.add(u.id);
+      commentFeed.push(u);
+      addedAny = true;
+    }
+  });
+  if (addedAny) {
+    commentFeed.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    if (commentFeed.length > COMMENT_FEED_MAX) commentFeed.length = COMMENT_FEED_MAX;
+  }
+  return addedAny;
+}
+
+// Fast poll (every COMMENT_POLL_MS) dedicated to the live comment feed —
+// separate from the 5-minute full loadAll() board refresh, since this is a
+// much lighter query safe to call far more often.
+async function refreshCommentFeed() {
+  try {
+    const updates = await fetchRecentUpdates();
+    recentUpdates = updates;
+    mergeIntoCommentFeed(updates);
+  } catch (e) {
+    // Transient failure — keep showing whatever the feed already has.
+  }
+  render();
 }
 
 // Fetches each person's own most-recent items directly from monday.com,
@@ -786,7 +866,7 @@ async function selectPerson(name) {
   renderPeopleBar();
 
   if (!selectedPerson) {
-    renderTicker();
+    renderCommentFeed();
     renderCheckinPanel();
     renderBoards();
     return;
@@ -808,7 +888,7 @@ async function selectPerson(name) {
     statusEl.textContent = prevStatus;
   }
 
-  renderTicker();
+  renderCommentFeed();
   renderCheckinPanel();
   renderBoards();
 }
@@ -830,7 +910,7 @@ function buildPeopleList() {
 
 function render() {
   renderPeopleBar();
-  renderTicker();
+  renderCommentFeed();
   renderCheckinPanel();
   renderBoards();
 }
@@ -851,38 +931,31 @@ function renderPeopleBar() {
   });
 }
 
-function renderTicker() {
-  // Comments feed, not column changes — reflects real conversation/check-in
-  // activity. When a person is selected, narrow it to their own comments.
+function renderCommentFeed() {
+  const listEl = document.getElementById('comment-feed-list');
+  // Newest first, already-sorted by mergeIntoCommentFeed; when a person is
+  // selected, narrow the feed to their own comments only.
   const filtered = selectedPerson
-    ? recentUpdates.filter(u => u.creator && u.creator.name === selectedPerson)
-    : recentUpdates;
-  const sorted = [...filtered]
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-    .slice(0, 25);
+    ? commentFeed.filter(u => u.creator && u.creator.name === selectedPerson)
+    : commentFeed;
 
-  // Slower, steadier scroll for longer lists so it stays readable.
-  const track = document.getElementById('ticker-track');
-  track.style.animationDuration = Math.max(180, sorted.length * 12) + 's';
-
-  const oneRun = sorted.map(u => {
+  listEl.innerHTML = filtered.map(u => {
     const boardName = (u.item && u.item.board && u.item.board.name) || '';
     const itemName = (u.item && u.item.name) || '';
     const author = u.creator ? u.creator.name : 'Someone';
-    const raw = (u.text_body || '').trim().replace(/\s+/g, ' ');
-    const snippet = raw.slice(0, 90) + (raw.length > 90 ? '…' : '');
+    const raw = (u.text_body || '').trim();
     return `
-      <span class="ticker-item">
-        <span class="dot" style="background:#00c875"></span>
-        <strong>${escapeHtml(author)}</strong> on <strong>${escapeHtml(boardName)}</strong> — ${escapeHtml(itemName)}${snippet ? ': ' + escapeHtml(snippet) : ''}
-        <span class="time">${timeAgo(u.created_at)}</span>
-      </span>
+      <div class="comment-row">
+        <div class="cf-meta">
+          <span class="dot" style="background:#00c875"></span>
+          <span class="cf-author">${escapeHtml(author)}</span>
+          <span class="cf-time">${timeAgo(u.created_at)}</span>
+        </div>
+        <div class="cf-board">${escapeHtml(boardName)}${itemName ? ' — ' + escapeHtml(itemName) : ''}</div>
+        ${raw ? `<div class="cf-snippet">${escapeHtml(raw)}</div>` : ''}
+      </div>
     `;
-  }).join('<span class="sep">•</span>');
-
-  track.innerHTML = sorted.length
-    ? (oneRun + '<span class="sep">•</span>' + oneRun)
-    : 'No recent comments found.';
+  }).join('') || '<div class="muted" style="padding:12px;">No recent comments found.</div>';
 }
 
 function renderCheckinPanel() {
