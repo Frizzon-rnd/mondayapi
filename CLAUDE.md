@@ -5,14 +5,17 @@ It documents what exists, why it's built the way it is, and what's next.
 
 ## What this is
 
-A live "ticker" dashboard for monday.com: a scrolling feed of recent comments across
-chosen boards, per-board status cards, a clickable people list, and a daily
-check-in/check-out summary — built for a CEO to get a fast overview of team activity
-without opening monday.com itself.
+A live dashboard for monday.com: a live-updating comment feed across chosen boards
+(styled like a chat/live-comments panel), per-board status cards, a clickable people
+list, and a daily check-in/check-out summary — built for a CEO to get a fast overview
+of team activity without opening monday.com itself.
 
-Right now it runs as **a local Node server + a browser tab**, started by double-clicking
-a launcher script. The next task (see "Next task" below) is to host it properly so
-anyone can just open a URL.
+**Status: hosted and live.** It's deployed as a Render web service at
+`https://mondayapi-rcqy.onrender.com`, backed by `github.com/Frizzon-rnd/mondayapi`
+(`main` branch, auto-deploys on push). It also still runs locally exactly the same way
+(local Node server + browser tab, via `start.command`/`start.bat` or `node server.js`)
+for development. See "Hosting" below for deploy details, and "Next task" for what's
+still queued up (real-time push via webhooks).
 
 ## Origin story / why some things look the way they do
 
@@ -32,6 +35,9 @@ monday-ticker-app/
   public/index.html    The entire frontend: HTML + CSS + JS in one file, no build step,
                         no framework, no npm dependencies. Talks to monday.com only
                         through the server.js proxy via fetch('/monday-api', ...).
+  package.json         Minimal (name/start script/engines) — added purely so Render's
+                        Node auto-detect has something to key off. No dependencies;
+                        local dev still just runs `node server.js` directly.
   start.command         Double-clickable launcher for macOS (opens Terminal briefly,
   start.bat             starts server.js, opens the browser to localhost:4173).
                          Windows equivalent.
@@ -132,26 +138,88 @@ also documented inline as a code comment near where it's handled.
    instead. If you add support for a differently-structured check-in board, this
    assumption may not hold.
 
+8. **The account has multiple workspaces, and boards must be scoped to one.** This
+   account has an active "Task Management" workspace (~35-40 real boards) and an
+   archived "Past Projects" workspace with many old client boards (Krafton, Soapbox,
+   Lollapalooza, etc.). An early version of the board picker queried `boards(limit: 200)`
+   with no workspace filter, which (a) mixed active and archived boards together in the
+   picker, and (b) **silently dropped a real active board** (`Post Production Task`, id
+   `1439508566`) off the end of the unpaginated 200-item result once both workspaces'
+   boards were combined, with no error surfaced — the same "silent partial failure"
+   failure mode as quirk #4, just triggered by a different cause. Fix: a workspace
+   picker screen now runs before the board picker (`query { workspaces(limit: 50) { id
+   name } }`), and the board query is scoped with `workspace_ids: [<chosen_id>]`
+   (confirmed-working argument). Don't go back to an unfiltered `boards` query without
+   re-solving this.
+
+9. **The account-wide `updates(limit: 100)` snapshot can silently "lose" a comment
+   before you ever see it.** The live comment feed (see "Live comment feed" below) reads
+   this query, then filters client-side to tracked boards (quirk #5). If enough
+   unrelated comments happen elsewhere in the account between one fetch and the next, an
+   older tracked-board comment can fall out of that top-100 window entirely — this is
+   exactly what caused check-in comments to appear "an hour old" even though the person
+   had checked in recently: by the time the (then 5-minute) poll ran again, other
+   account activity had already pushed that comment past position 100. Fix: poll far
+   more often (every `COMMENT_POLL_MS`, currently 9s) and accumulate results
+   client-side (`commentFeed`/`seenUpdateIds` in `mergeIntoCommentFeed()`) instead of
+   replacing the displayed list with each raw snapshot — once a comment has been seen,
+   it stays in the feed regardless of what the API returns afterward. This is a
+   mitigation, not a structural fix: on an extremely chatty account it's still
+   theoretically possible for >100 comments to land between two 9-second polls. The
+   real fix is webhooks (see "Next task").
+
 ## Frontend state machine
 
-`public/index.html`'s JS has three screens, toggled via `display: none/block`:
+`public/index.html`'s JS has four screens, toggled via `display: none/block`:
 
 1. `#connect-screen` — paste API token.
-2. `#picker-screen` — after connecting, choose up to `MAX_TRACKED_BOARDS` (8) boards
-   from a searchable, workspace-grouped list. Shown automatically on first connect (no
-   saved selection) or via the "Edit boards" button. Selection persists in
-   `localStorage` under `monday_selected_boards` (this is fine to persist across
-   sessions, unlike the token — it's not sensitive).
-3. `#dashboard` — the actual ticker/cards/people-bar UI.
+2. `#workspace-picker-screen` — after connecting, pick exactly one monday.com
+   workspace (`query { workspaces(limit: 50) { id name } }`). Shown automatically when
+   there's no saved workspace choice, or via "Change workspace" from the board picker.
+   Selection persists in `localStorage` under `monday_selected_workspace`. Switching
+   workspaces clears the current board selection (`selectWorkspace()`), since board
+   picks from one workspace don't carry meaning in another.
+3. `#picker-screen` — choose up to `MAX_TRACKED_BOARDS` (8) boards from a searchable
+   list, scoped to the chosen workspace (`workspace_ids: [selectedWorkspaceId]`, see
+   quirk #8). Shown automatically after the workspace picker on first-time setup, or via
+   the "Edit boards" button (reopens directly for the *same* workspace — fewer clicks
+   for the common case of just tweaking board picks). Selection persists in
+   `localStorage` under `monday_selected_boards`.
+4. `#dashboard` — the actual cards/people-bar/live-comment-feed UI.
 
 Key state variables (all module-scope `let`s near the top of the `<script>`):
 - `TOKEN` — session-only, from `sessionStorage`.
+- `selectedWorkspaceId` — persisted workspace pick, from `localStorage`.
 - `selectedBoardIds` — persisted board picks, from `localStorage`.
 - `boardsData` — full fetched detail (columns, items) for each selected board, rebuilt
   every `loadAll()` (auto every 5 min, or via "Refresh now").
-- `recentUpdates` — the comments feed powering the ticker.
+- `recentUpdates` — latest account-wide comments snapshot (replaced each poll); feeds
+  the check-in summary card (`renderCheckinBoardCard()`).
+- `commentFeed` / `seenUpdateIds` — the ever-growing, deduped list behind the live
+  comment feed sidebar (see below). Unlike `recentUpdates`, this only ever grows within
+  a given board selection; reset in `saveSelectedBoardIds()` whenever the tracked boards
+  change.
 - `personDataCache`, `checkinCache` — per-person on-demand fetch results, cached by
   name, cleared whenever `loadAll()` re-runs (board data changed underneath them).
+
+## Live comment feed (right-hand sidebar)
+
+Replaced the original horizontally-scrolling ticker. Renders in `#comment-feed-col` as
+a scrollable, chat-like panel — newest comment on top, full scrollback below, capped at
+`COMMENT_FEED_MAX` (300) entries.
+
+- `refreshCommentFeed()` runs on its own interval (`feedPollTimer`, every
+  `COMMENT_POLL_MS` = 9000ms) — separate from the 5-minute `loadAll()` board refresh,
+  since it's a much lighter query (`fetchRecentUpdates()`, no board/item nesting) and
+  safe to poll far more often.
+- `mergeIntoCommentFeed()` is what makes the feed feel "live" without needing websockets
+  or webhooks: each poll's results are merged into `commentFeed` by id, not used to
+  replace it — see quirk #9 for why a naive "just re-render the latest snapshot"
+  approach was actively wrong (it made check-in comments look stale).
+- This is intentionally the simple, no-new-infrastructure option (polling + client-side
+  accumulation). A genuinely instant, push-based version (monday.com webhooks + Server-
+  Sent Events) was evaluated and deliberately deferred — see "Next task" below for what
+  that would take.
 
 ## Known limitations / things not yet handled
 
@@ -161,48 +229,111 @@ Key state variables (all module-scope `let`s near the top of the `<script>`):
 - No offline/error-retry logic beyond a single try/catch per fetch; a failed
   `loadAll()` just shows an error string in the status line.
 - Single-user-at-a-time design (no multi-tenant server-side state) — this is actually
-  fine as-is since all state lives client-side in each visitor's browser, but worth
-  confirming still holds true if the architecture changes.
+  fine as-is since all state lives client-side in each visitor's browser, but **stops
+  holding true if the webhook/SSE work above is picked up**, since a webhook is a
+  shared per-board resource, not a per-visitor one. See "Next task" for what changes.
 - Status/people detection is a heuristic (see quirks #6/#7 above) — a board with an
   unusual structure may not surface correctly without adjusting those heuristics.
+- The live comment feed's polling mitigation (quirk #9) is not a structural fix — on an
+  extremely chatty account it's theoretically still possible to miss a comment between
+  two 9-second polls. Webhooks (see "Next task") are the real fix.
 
-## Next task: host it so anyone can use it via a URL
+## Hosting (done)
 
-Currently this only runs if someone downloads the zip, has Node.js installed, and
-double-clicks a launcher — fine for one CEO, not scalable to "anyone at Frizzon."
+Deployed as a Render web service (Hobby/free workspace plan), auto-deploying from
+`github.com/Frizzon-rnd/mondayapi` on push to `main`. Live at
+`https://mondayapi-rcqy.onrender.com`.
 
-**Decision made:** deploy to **Render or Railway** (free/cheap tier), not a serverless
-rewrite — `server.js` is close to deployable as-is on either.
+- Build command: `npm install` (a no-op today — no dependencies — but required by
+  Render's form and harmless).
+- Start command: `node server.js` (or `npm start`, same thing via `package.json`).
+- No environment variables/secrets needed — the monday.com token is supplied by each
+  visitor in the browser, never baked into the server, per the Auth model above.
+- **Instance type is Free**, which spins the service down after 15 minutes with no
+  traffic and takes ~30-60s to wake on the next request. This only affects the *first*
+  page load after a gap — once a tab is open, polling/refreshing continues normally
+  with no further delay. If that cold-start delay becomes annoying in practice, the fix
+  is upgrading to Render's Starter tier (~$7/mo, always-on), not switching platforms.
+- **This repo is pushed from this machine via a dedicated SSH deploy key**
+  (`~/.ssh/frizzon_mondayapi_deploy`), scoped to this repo only via `core.sshCommand` in
+  this repo's local `.git/config` — it does not use or affect the machine's default
+  `gh`/git identity. A `Host github.com` block was also added to `~/.ssh/config` to
+  override a pre-existing global `RemoteCommand`/`RequestTTY` setting (unrelated Warp
+  terminal tmux integration) that was silently breaking all git-over-SSH on this
+  machine. Neither of these is portable to a different machine — a fresh clone
+  elsewhere would need its own deploy key added to the GitHub repo's Settings → Deploy
+  Keys (with write access) to push.
 
-To get there:
+## Next task: real-time comments via monday.com webhooks (a.k.a. "Option B")
 
-1. **Push this repo** to the (currently empty) GitHub repo:
-   `https://github.com/Frizzon-rnd/mondayapi.git`
-   ```
-   git remote add origin https://github.com/Frizzon-rnd/mondayapi.git
-   git branch -M main
-   git push -u origin main
-   ```
-2. **Deploy `server.js` as a web service** on Render or Railway, pointed at that repo.
-   - Both platforms auto-detect Node and run `node server.js` (or configure a start
-     command explicitly if needed).
-   - `server.js` already reads `PORT` from `process.env.PORT` — required by both
-     platforms, already handled, no change needed.
-   - No environment variables/secrets are needed at deploy time — the monday.com token
-     is supplied by each visitor in the browser, not baked into the server.
-3. **Verify the CORS proxy still works** once hosted — should be transparent since
-   `server.js`'s logic doesn't change, only where it runs.
-4. **Custom domain / access control** — decide whether this should be open to anyone
-   with the URL, or gated (e.g. behind a company VPN, a simple shared password, or an
-   allowlist) before wiring up a public link. Currently there is zero access control
-   beyond "you need a valid monday.com token for this account" — that's a reasonable
-   bar today, but worth a deliberate decision once it's on the public internet instead
-   of localhost.
-5. **Longer-term, consider real OAuth** instead of "paste your personal token" (see
-   "Auth model" above) if this is going to be used by multiple people regularly —
-   monday.com's developer platform supports building a proper installable app with an
-   OAuth flow, which is the standard/expected pattern for a tool other people install
-   rather than a personal script.
+The live comment feed currently works by **polling** (`refreshCommentFeed()` every 9s,
+see "Live comment feed" above) — good enough that it feels close to live, and it
+already fixed the "check-in comments look an hour old" bug. The next real upgrade is
+**push-based delivery**: monday.com fires a webhook the instant a comment is posted,
+and the server relays it to the browser instantly via Server-Sent Events (SSE) instead
+of the browser ever polling. This was evaluated in detail before deciding to ship
+polling first; the plan below is what's left if/when this gets picked up.
+
+**What changes:**
+- `server.js` gains a webhook receiver (`POST /webhook`) and an SSE endpoint
+  (`GET /events`) — this turns it from a stateless request/response proxy into a
+  long-lived, stateful process for the first time.
+- `server.js` also needs to create/delete monday.com webhook subscriptions
+  (`create_webhook`/`delete_webhook` mutations) per board whenever someone's tracked
+  board selection changes.
+- monday.com verifies a new webhook with a **challenge/response handshake** — right
+  after registering, it POSTs `{"challenge": "..."}` to the receiver and expects the
+  same value echoed back within a few seconds, or the webhook never activates. Must be
+  handled correctly in the receiver.
+- The frontend swaps its polling `setInterval` for an `EventSource` connection to
+  `/events`.
+
+**Supporting multiple people, each with their own board selection ("Option 2" of the
+three multi-user scenarios considered — see below), needs more than the above:**
+- A server-side registry, e.g. `boardId -> { webhookId, refCount }`. Each SSE
+  connection tells the server which board IDs it cares about (e.g.
+  `/events?boards=1,2,3`); a board's webhook is created the first time *anyone* is
+  watching it, and deleted only once *nobody* is.
+- A short grace period before actually deregistering a board's webhook on
+  disconnect — a page reload momentarily drops and reopens the SSE connection, and
+  without a delay (e.g. 30-60s) you'd get needless create/delete churn on every reload.
+- Incoming webhook events get routed only to the SSE connections that have that board
+  in their filter list — everyone else's stream stays quiet.
+- **A new dedicated service token**, stored as a Render environment variable, used only
+  for webhook create/delete calls — separate from the per-visitor tokens used
+  everywhere else. Webhook registration is server-initiated (not a per-visitor request
+  being relayed), and needs to work reliably even during startup reconciliation, not
+  just while a specific person's tab happens to be open. This is a real, deliberate
+  departure from today's "zero secrets stored server-side" model — worth deciding on
+  explicitly rather than backing into.
+- **Restart recovery**: the registry above lives in memory and is lost on every
+  restart/redeploy. Reconnecting clients naturally re-trigger registration for their
+  own boards, but webhooks left over from before the restart that are now orphaned
+  won't clean themselves up without an explicit startup reconciliation step (list
+  existing webhooks from monday.com, diff against what's currently being watched,
+  delete the stragglers).
+- **Render's free tier and this don't mix well.** If the container is asleep when
+  monday.com POSTs a webhook or its challenge handshake, the ~30-60s cold-start wake
+  can cause the handshake to time out (webhook fails to register) or a real event to
+  get dropped. Reliable webhook delivery basically requires the Starter (~$7/mo,
+  always-on) tier.
+
+**Three tiers of "multiple users" were considered — worth re-reading before assuming
+which one is meant if this comes up again:**
+1. *Multiple people at Frizzon watching the same board selection simultaneously* —
+   already fine with either polling or SSE; broadcasting to multiple open tabs needs no
+   extra work.
+2. *Multiple people, each with their own different board selection, same monday.com
+   account* — the scenario the plan above is for. Real but contained work: a
+   ref-counted registry and per-connection event filtering, still one server, one
+   monday.com account, no new auth model.
+3. *Multiple different companies/monday.com accounts using this same hosted app* — a
+   much bigger step, out of scope unless explicitly requested. "Paste your personal
+   token" stops working as an auth model here — this needs monday.com's real OAuth app
+   flow (so each company delegates access to its own account) and a persistent
+   datastore (not in-memory) mapping tenants to their own tokens/webhooks/board
+   selections. This is the same "longer-term, consider real OAuth" note from the Auth
+   model section above, just spelled out for the webhook case specifically.
 
 ## Local development
 
