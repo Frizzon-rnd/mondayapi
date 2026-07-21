@@ -49,8 +49,8 @@
   #connect-screen .hint { font-size: 11px; color: #9aa0a6; margin-top: 12px; line-height: 1.5; }
   #connect-screen a { color: #0073ea; }
 
-  /* ---- Board picker screen ---- */
-  #picker-screen {
+  /* ---- Workspace picker / Board picker screens ---- */
+  #workspace-picker-screen, #picker-screen {
     display: none;
     max-width: 640px;
     margin: 6vh auto;
@@ -60,14 +60,18 @@
     padding: 28px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
   }
-  #picker-screen h1 { font-size: 18px; margin: 0 0 6px; }
-  #picker-screen p { font-size: 13px; color: #6b7280; margin: 0 0 14px; line-height: 1.5; }
+  #workspace-picker-screen h1, #picker-screen h1 { font-size: 18px; margin: 0 0 6px; }
+  #workspace-picker-screen p, #picker-screen p { font-size: 13px; color: #6b7280; margin: 0 0 14px; line-height: 1.5; }
+  #picker-change-workspace-btn {
+    border: none; background: none; color: #0073ea; font-size: 12px; font-weight: 600;
+    cursor: pointer; padding: 0 0 12px; text-decoration: underline;
+  }
   #picker-search {
     width: 100%; padding: 9px 12px; font-size: 13px;
     border: 1px solid #d0d3d8; border-radius: 6px; margin-bottom: 10px;
   }
   #picker-count { font-size: 12px; color: #0073ea; margin-bottom: 8px; font-weight: 700; }
-  #picker-list {
+  #picker-list, #workspace-picker-list {
     max-height: 360px; overflow-y: auto;
     border: 1px solid #eef0f2; border-radius: 8px; margin-bottom: 14px;
   }
@@ -88,8 +92,8 @@
   }
   #picker-save-btn:disabled { background: #c4d9f5; cursor: not-allowed; }
   #picker-save-btn:not(:disabled):hover { background: #0060c2; }
-  #picker-error { color: #df2f4a; font-size: 12px; margin-bottom: 8px; }
-  #picker-cancel-btn {
+  #picker-error, #workspace-picker-error { color: #df2f4a; font-size: 12px; margin-bottom: 8px; }
+  #picker-cancel-btn, #workspace-picker-cancel-btn {
     border: 1px solid #d0d3d8; background: #fff; border-radius: 6px;
     padding: 6px 12px; font-size: 12px; cursor: pointer; color: #6b7280; margin-top: 8px; width: 100%;
   }
@@ -223,9 +227,18 @@
     <div class="hint">Find your token in monday.com under Avatar → Admin → API (or Profile → Developers → My Access Tokens).</div>
   </div>
 
+  <div id="workspace-picker-screen">
+    <h1>Choose a workspace</h1>
+    <p>Pick which monday.com workspace to pull boards from.</p>
+    <div id="workspace-picker-error"></div>
+    <div id="workspace-picker-list"><div class="muted" style="padding:12px;">Loading workspaces…</div></div>
+    <button id="workspace-picker-cancel-btn" style="display:none;">Cancel</button>
+  </div>
+
   <div id="picker-screen">
     <h1>Choose up to 8 boards</h1>
-    <p>Pick the boards you want tracked in the ticker and dashboard. You can change this anytime with "Edit boards."</p>
+    <p>Pick the boards you want tracked in the ticker and dashboard. You can change this anytime with "Edit boards." <span id="picker-workspace-label"></span></p>
+    <button id="picker-change-workspace-btn">Change workspace</button>
     <input id="picker-search" type="text" placeholder="Search boards…">
     <div id="picker-count">0 / 8 selected</div>
     <div id="picker-error"></div>
@@ -271,6 +284,7 @@ const CHECKIN_BOARD_PATTERN = /check[\s-]?in/i;
 const SUBITEMS_PATTERN = /^subitems of\b/i;
 const MAX_TRACKED_BOARDS = 8;
 const STORAGE_KEY_BOARDS = 'monday_selected_boards';
+const STORAGE_KEY_WORKSPACE = 'monday_selected_workspace';
 
 let TOKEN = sessionStorage.getItem('monday_token') || '';
 // The user's chosen boards — picked once via the picker screen, persisted
@@ -279,7 +293,16 @@ let TOKEN = sessionStorage.getItem('monday_token') || '';
 // under monday.com's per-query complexity limit (fetching "everything
 // active" caused boards to randomly appear/disappear between refreshes).
 let selectedBoardIds = loadSelectedBoardIds();
-let pickerBoardsCache = null; // [{id,name,workspaceName}] — full list, fetched once per session
+// The workspace the board picker is scoped to. This account has an active
+// "Task Management" workspace and an archived "Past Projects" workspace with
+// many old client boards — querying `boards` unfiltered across both mixed
+// them together and, worse, silently dropped some active boards past
+// monday.com's unpaginated 200-item limit once both workspaces' boards were
+// combined. Scoping every board query to one chosen workspace_id avoids both.
+let selectedWorkspaceId = loadSelectedWorkspaceId();
+let workspacesCache = null; // [{id,name}] — fetched once per session
+let workspacePickerReturnTo = 'dashboard'; // 'dashboard' | 'boardPicker' — where Cancel goes back to
+let pickerBoardsCache = null; // [{id,name}] — boards for selectedWorkspaceId, fetched once per session
 let pickerSelection = new Set(); // in-progress selection while the picker is open
 
 let boardsData = [];   // [{id,name,columns,items:[...]}]
@@ -301,6 +324,14 @@ function loadSelectedBoardIds() {
 function saveSelectedBoardIds(ids) {
   selectedBoardIds = ids;
   localStorage.setItem(STORAGE_KEY_BOARDS, JSON.stringify(ids));
+}
+
+function loadSelectedWorkspaceId() {
+  return localStorage.getItem(STORAGE_KEY_WORKSPACE) || null;
+}
+function saveSelectedWorkspaceId(id) {
+  selectedWorkspaceId = id;
+  localStorage.setItem(STORAGE_KEY_WORKSPACE, id);
 }
 
 // Boards used for the ticker/cards/people counts — everything except
@@ -394,9 +425,11 @@ async function connect() {
     sessionStorage.setItem('monday_token', TOKEN);
     document.getElementById('connect-screen').style.display = 'none';
 
-    if (!selectedBoardIds.length) {
-      // First time (or selection was cleared): make them pick before
-      // showing an empty dashboard.
+    if (!selectedWorkspaceId) {
+      // First time (or workspace selection was cleared): pick a workspace
+      // before the board picker, and before showing an empty dashboard.
+      await openWorkspacePicker(false, 'dashboard');
+    } else if (!selectedBoardIds.length) {
       await openPicker(false);
     } else {
       showDashboard();
@@ -408,6 +441,7 @@ async function connect() {
 }
 
 function showDashboard() {
+  document.getElementById('workspace-picker-screen').style.display = 'none';
   document.getElementById('picker-screen').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
   loadAll();
@@ -415,13 +449,80 @@ function showDashboard() {
   refreshTimer = setInterval(loadAll, 5 * 60 * 1000);
 }
 
+// ---- Workspace picker ----
+
+async function openWorkspacePicker(allowCancel, returnTo) {
+  workspacePickerReturnTo = returnTo || 'dashboard';
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('picker-screen').style.display = 'none';
+  document.getElementById('workspace-picker-screen').style.display = 'block';
+  document.getElementById('workspace-picker-cancel-btn').style.display = allowCancel ? 'block' : 'none';
+
+  const listEl = document.getElementById('workspace-picker-list');
+  const errEl = document.getElementById('workspace-picker-error');
+  errEl.textContent = '';
+
+  if (!workspacesCache) {
+    listEl.innerHTML = '<div class="muted" style="padding:12px;">Loading workspaces…</div>';
+    try {
+      const data = await mondayQuery(`query { workspaces (limit: 50) { id name } }`);
+      workspacesCache = (data.workspaces || [])
+        .map(w => ({ id: String(w.id), name: w.name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    } catch (e) {
+      errEl.textContent = 'Could not load workspaces: ' + e.message;
+      listEl.innerHTML = '';
+      return;
+    }
+  }
+
+  renderWorkspacePickerList();
+}
+
+function renderWorkspacePickerList() {
+  const listEl = document.getElementById('workspace-picker-list');
+  listEl.innerHTML = workspacesCache.map(w => `
+    <div class="picker-row" data-id="${w.id}">
+      <span>${escapeHtml(w.name)}</span>
+    </div>
+  `).join('') || '<div class="muted" style="padding:12px;">No workspaces found.</div>';
+
+  listEl.querySelectorAll('.picker-row').forEach(row => {
+    row.addEventListener('click', () => selectWorkspace(row.getAttribute('data-id')));
+  });
+}
+
+async function selectWorkspace(id) {
+  const changed = String(id) !== String(selectedWorkspaceId || '');
+  saveSelectedWorkspaceId(String(id));
+  if (changed) {
+    // Board picks belong to the old workspace's boards — they don't carry
+    // over to a different workspace.
+    pickerBoardsCache = null;
+    saveSelectedBoardIds([]);
+  }
+  // If we got here via "change workspace" from an already-configured
+  // dashboard, keep Cancel available (falls back to the dashboard); on the
+  // very first setup there's nothing to cancel back to yet.
+  await openPicker(workspacePickerReturnTo === 'boardPicker');
+}
+
+function currentWorkspaceName() {
+  const ws = (workspacesCache || []).find(w => w.id === String(selectedWorkspaceId));
+  return ws ? ws.name : '';
+}
+
 // ---- Board picker ----
 
 async function openPicker(allowCancel) {
   document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('workspace-picker-screen').style.display = 'none';
   document.getElementById('picker-screen').style.display = 'block';
   document.getElementById('picker-cancel-btn').style.display = allowCancel ? 'block' : 'none';
   document.getElementById('picker-search').value = '';
+  document.getElementById('picker-workspace-label').textContent = currentWorkspaceName()
+    ? `Workspace: ${currentWorkspaceName()}.`
+    : '';
   pickerSelection = new Set(selectedBoardIds.map(String));
 
   const listEl = document.getElementById('picker-list');
@@ -432,17 +533,13 @@ async function openPicker(allowCancel) {
     listEl.innerHTML = '<div class="muted" style="padding:12px;">Loading your boards…</div>';
     try {
       const data = await mondayQuery(`
-        query { boards (limit: 200) { id name state workspace { name } } }
-      `);
+        query ($wsIds: [ID!]) { boards (limit: 200, workspace_ids: $wsIds) { id name state } }
+      `, { wsIds: [selectedWorkspaceId] });
       pickerBoardsCache = (data.boards || [])
         .filter(b => b.state === 'active')
         .filter(b => !SUBITEMS_PATTERN.test(b.name))
-        .map(b => ({
-          id: String(b.id),
-          name: b.name,
-          workspaceName: (b.workspace && b.workspace.name) || 'No workspace'
-        }))
-        .sort((a, b) => a.workspaceName.localeCompare(b.workspaceName) || a.name.localeCompare(b.name));
+        .map(b => ({ id: String(b.id), name: b.name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
     } catch (e) {
       errEl.textContent = 'Could not load boards: ' + e.message;
       listEl.innerHTML = '';
@@ -458,17 +555,12 @@ function renderPickerList(searchTerm) {
   const term = searchTerm.trim().toLowerCase();
   const filtered = pickerBoardsCache.filter(b => !term || b.name.toLowerCase().includes(term));
 
-  let lastGroup = null;
   const atMax = pickerSelection.size >= MAX_TRACKED_BOARDS;
 
   listEl.innerHTML = filtered.map(b => {
     const checked = pickerSelection.has(b.id);
     const disabled = !checked && atMax;
-    const groupHtml = b.workspaceName !== lastGroup
-      ? `<div class="picker-group-label">${escapeHtml(b.workspaceName)}</div>`
-      : '';
-    lastGroup = b.workspaceName;
-    return `${groupHtml}
+    return `
       <div class="picker-row ${disabled ? 'disabled' : ''}" data-id="${b.id}">
         <input type="checkbox" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
         <span>${escapeHtml(b.name)}</span>
@@ -926,6 +1018,11 @@ document.getElementById('picker-cancel-btn').addEventListener('click', () => sho
 document.getElementById('picker-save-btn').addEventListener('click', () => {
   saveSelectedBoardIds([...pickerSelection]);
   showDashboard();
+});
+document.getElementById('picker-change-workspace-btn').addEventListener('click', () => openWorkspacePicker(true, 'boardPicker'));
+document.getElementById('workspace-picker-cancel-btn').addEventListener('click', () => {
+  if (workspacePickerReturnTo === 'boardPicker') openPicker(true);
+  else showDashboard();
 });
 
 // Auto-connect if a token is already in this tab's session
