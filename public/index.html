@@ -161,9 +161,12 @@
     animation: cf-pulse 1.6s ease-in-out infinite;
   }
   @keyframes cf-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-  #comment-feed-list { flex: 1; overflow-y: auto; padding: 6px 10px; }
-  #comment-feed-list::-webkit-scrollbar { width: 6px; }
-  #comment-feed-list::-webkit-scrollbar-thumb { background: #d0d3d8; border-radius: 3px; }
+  #comment-feed-list { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 10px; }
+  .cf-day-divider {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; color: #9aa0a6;
+    padding: 10px 4px 4px; letter-spacing: 0.03em;
+  }
+  .cf-day-divider:first-child { padding-top: 4px; }
   .comment-row { padding: 8px 4px; border-bottom: 1px solid #f0f1f3; color: #1a1a1a; }
   .comment-row:last-child { border-bottom: none; }
   .comment-row .cf-meta { display: flex; align-items: baseline; gap: 6px; margin-bottom: 2px; }
@@ -173,53 +176,124 @@
   .comment-row .cf-item { font-size: 11px; color: #6b7280; margin-bottom: 3px; }
   .comment-row .cf-snippet { font-size: 12px; line-height: 1.4; white-space: pre-line; color: #333; }
 
-  #people-bar {
+  /* ---- People sidebar (left) ---- */
+  #people-col {
+    width: 200px;
+    flex-shrink: 0;
+    background: #fff;
+    border-radius: 10px;
+    border: 1px solid #e3e5e8;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    position: sticky;
+    top: 14px;
+    max-height: calc(100vh - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #people-col-header {
+    padding: 12px 14px;
+    border-bottom: 1px solid #e3e5e8;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #9aa0a6;
+  }
+  #people-col-list {
+    flex: 1;
+    min-height: 0; /* without this, a flex child with overflow-y:auto ignores its
+                       container's max-height and grows to fit all content instead
+                       of scrolling — the actual cause of the sidebar overflowing
+                       past the viewport with a full user roster. */
+    overflow-y: auto;
+    padding: 6px;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  #people-col-list:hover { scrollbar-color: #d0d3d8 transparent; }
+  #people-col-list::-webkit-scrollbar { width: 6px; }
+  #people-col-list::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+  #people-col-list:hover::-webkit-scrollbar-thumb { background: #d0d3d8; }
+  .person-row {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 20px;
-    background: #fff;
-    border-bottom: 1px solid #e3e5e8;
-    overflow-x: auto;
-    flex-wrap: wrap;
-  }
-  #people-bar .label { font-size: 11px; color: #9aa0a6; font-weight: 700; text-transform: uppercase; margin-right: 4px; }
-  .person-chip {
-    border: 1px solid #d0d3d8;
-    background: #f7f8fa;
-    border-radius: 16px;
-    padding: 5px 12px;
+    padding: 7px 8px;
+    border-radius: 6px;
+    cursor: pointer;
     font-size: 12px;
     font-weight: 600;
-    cursor: pointer;
     color: #333;
-    white-space: nowrap;
   }
-  .person-chip:hover { background: #eef1f5; }
-  .person-chip.active { background: #0073ea; color: #fff; border-color: #0073ea; }
+  .person-row:hover { background: #f7f8fa; }
+  .person-row.active { background: #eaf2fd; color: #0073ea; }
+  .person-row .prow-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .person-row .prow-count { font-size: 11px; color: #9aa0a6; font-weight: 500; }
 
-  #checkin-panel {
+  /* ---- Person popup ---- */
+  #person-popup-overlay {
     display: none;
-    margin: 14px 20px 0;
-    background: #fffbe6;
-    border: 1px solid #f3d675;
-    border-radius: 10px;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+  #person-popup-overlay.open { display: flex; }
+  #person-popup {
+    background: #fff;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 480px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+  }
+  #person-popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: 14px 16px;
+    border-bottom: 1px solid #e3e5e8;
   }
-  #checkin-panel h3 { margin: 0 0 8px; font-size: 13px; }
-  #checkin-panel ul {
-    list-style: none;
-    margin: 0;
-    padding: 0 4px 0 0;
-    max-height: 220px;
+  #person-popup-title { font-size: 15px; font-weight: 700; }
+  #person-popup-close {
+    border: none; background: none; font-size: 20px; line-height: 1; cursor: pointer; color: #9aa0a6; padding: 0 4px;
+  }
+  #person-popup-close:hover { color: #333; }
+  #person-popup-body {
+    padding: 14px 16px;
     overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
   }
-  #checkin-panel ul::-webkit-scrollbar { width: 6px; }
-  #checkin-panel ul::-webkit-scrollbar-thumb { background: #e0c866; border-radius: 3px; }
-  #checkin-panel li { font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f3e6b0; }
-  #checkin-panel li:last-child { border-bottom: none; }
-  #checkin-panel .checkin-meta { display: flex; gap: 8px; align-items: center; margin-bottom: 2px; }
-  #checkin-panel .checkin-snippet { color: #5c5230; font-size: 12px; line-height: 1.4; padding-left: 16px; white-space: pre-line; }
+  #person-popup-body:hover { scrollbar-color: #d0d3d8 transparent; }
+  #person-popup-body::-webkit-scrollbar { width: 6px; }
+  #person-popup-body::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+  #person-popup-body:hover::-webkit-scrollbar-thumb { background: #d0d3d8; }
+  .popup-section { margin-bottom: 16px; }
+  .popup-section:last-child { margin-bottom: 0; }
+  .popup-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #9aa0a6; margin-bottom: 6px; }
+  .popup-board-group { margin-bottom: 10px; }
+  .popup-board-group:last-child { margin-bottom: 0; }
+  .popup-board-name { font-size: 12px; font-weight: 700; color: #333; margin-bottom: 4px; }
+  .checkin-meta { display: flex; gap: 8px; align-items: center; margin-bottom: 2px; }
+  .checkin-snippet { color: #5c5230; font-size: 12px; line-height: 1.4; padding-left: 16px; white-space: pre-line; }
+  .checkin-list { list-style: none; margin: 0; padding: 0; }
+  .checkin-list li { font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f0f1f3; }
+  .checkin-list li:last-child { border-bottom: none; }
+
+  /* ---- Refresh status: compact header text + full-width progress bars ---- */
+  #refresh-status-text { font-size: 11px; color: #9aa0a6; white-space: nowrap; }
+  #refresh-bars { display: flex; flex-direction: column; gap: 1px; }
+  .refresh-bar-track { height: 2px; background: #eef0f2; overflow: hidden; }
+  .refresh-bar-fill {
+    height: 100%; width: 0%; background: #0073ea;
+    transition: width 1s linear;
+  }
+  .refresh-bar-track.comments .refresh-bar-fill { background: #00c875; }
 
   #status-line { padding: 0; font-size: 12px; color: #6b7280; }
   #boards-grid {
@@ -228,18 +302,53 @@
     gap: 14px;
     padding: 14px 20px 24px;
   }
+  #project-cards-slot { display: contents; }
   .card { background: #fff; border: 1px solid #e3e5e8; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
   .card-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
   .count-total { font-size: 11px; font-weight: 500; color: #6b7280; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-  .count-chip { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 12px; }
-  .recent-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid #f0f1f3; }
+  .chips-row-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #9aa0a6; margin: 6px 0 4px; }
+  .chips-row-label:first-child { margin-top: 0; }
+  /* Small text chips, capped to the top statuses by count (+N more instead
+     of listing every distinct status) and forced to one line — this is what
+     keeps card height fixed regardless of how many statuses a board has,
+     while still showing readable labels instead of color-only bars/dots. */
+  .chips { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; overflow: hidden; white-space: nowrap; }
+  .chips:last-of-type { margin-bottom: 10px; }
+  .count-chip { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 10px; flex-shrink: 0; }
+  .count-chip.more-chip { background: #f0f1f3 !important; color: #6b7280 !important; }
+  .recent-list {
+    list-style: none; margin: 0; padding: 0; border-top: 1px solid #f0f1f3;
+    max-height: 260px; overflow-y: auto; scroll-behavior: smooth;
+  }
   .recent-list li { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid #f5f6f7; font-size: 12px; }
   .recent-list li:last-child { border-bottom: none; }
   .recent-list a { color: #1a1a1a; text-decoration: none; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .recent-list a:hover { text-decoration: underline; }
   .muted { color: #9aa0a6; }
   .card-error { color: #df2f4a; font-size: 12px; }
+
+  /* ---- Auto-hide scrollbars ----
+     Applies to the scrollable regions (comment feed, project card task
+     lists): invisible at rest, thin + visible only while hovering that
+     region. scrollbar-color covers Firefox; the ::-webkit-* rules cover
+     Chrome/Safari/Edge. */
+  #comment-feed-list, .recent-list {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  #comment-feed-list:hover, .recent-list:hover {
+    scrollbar-color: #d0d3d8 transparent;
+  }
+  #comment-feed-list::-webkit-scrollbar, .recent-list::-webkit-scrollbar {
+    width: 6px;
+  }
+  #comment-feed-list::-webkit-scrollbar-thumb, .recent-list::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 3px;
+  }
+  #comment-feed-list:hover::-webkit-scrollbar-thumb, .recent-list:hover::-webkit-scrollbar-thumb {
+    background: #d0d3d8;
+  }
 </style>
 </head>
 <body>
@@ -281,27 +390,43 @@
       </div>
       <div style="display:flex; align-items:center; gap:10px;">
         <span id="status-line">Loading…</span>
+        <span id="refresh-status-text"></span>
         <button id="edit-boards-btn">Edit boards</button>
         <button id="refresh-btn">Refresh now</button>
         <button id="disconnect-btn">Disconnect</button>
       </div>
     </header>
 
+    <div id="refresh-bars">
+      <div class="refresh-bar-track"><div id="refresh-bar-boards" class="refresh-bar-fill"></div></div>
+      <div class="refresh-bar-track comments"><div id="refresh-bar-comments" class="refresh-bar-fill"></div></div>
+    </div>
+
     <div class="dashboard-body">
+      <div id="people-col">
+        <div id="people-col-header">People</div>
+        <div id="people-col-list"></div>
+      </div>
+
       <div class="main-col">
-        <div id="people-bar"><span class="label">People</span></div>
-
-        <div id="checkin-panel">
-          <h3 id="checkin-title">Check-ins</h3>
-          <ul id="checkin-list"></ul>
+        <div id="boards-grid">
+          <div id="project-cards-slot"></div>
         </div>
-
-        <div id="boards-grid"></div>
       </div>
 
       <div id="comment-feed-col">
         <div id="comment-feed-header"><span class="live-dot"></span> Live comments</div>
         <div id="comment-feed-list"></div>
+      </div>
+    </div>
+
+    <div id="person-popup-overlay">
+      <div id="person-popup">
+        <div id="person-popup-header">
+          <span id="person-popup-title"></span>
+          <button id="person-popup-close">&times;</button>
+        </div>
+        <div id="person-popup-body"></div>
       </div>
     </div>
   </div>
@@ -355,8 +480,33 @@ let recentUpdates = [];  // latest account-wide comments snapshot, refreshed on 
 let commentFeed = [];
 let seenUpdateIds = new Set();
 let feedPollTimer = null;
-const COMMENT_POLL_MS = 9000;
+const COMMENT_POLL_MS = 60000;
 const COMMENT_FEED_MAX = 300;
+const BOARD_REFRESH_MS = 10 * 60 * 1000;
+
+// Drives the small corner refresh-status widget (see renderRefreshStatus) —
+// stamped whenever loadAll()/refreshCommentFeed() actually complete a fetch.
+let lastBoardsRefreshAt = null;
+let lastCommentsRefreshAt = null;
+let refreshStatusTimer = null;
+
+// Full account user roster (id/name), fetched once via loadAll() — used for
+// the check-in summary banner so it can flag people who have NOT posted
+// anything, which task-assignment-derived peopleList can never do (someone
+// with zero assigned tasks would simply never appear in that list).
+let allUsersCache = null;
+const CHECKIN_HOUR_GATE = 9; // local hour after which missing check-ins are flagged as a warning
+
+// Auto-scroll ("both scrollable and auto-cycling", per product decision):
+// each project card's task list can be scrolled manually at any time: an
+// interval nudges scrollTop forward every few seconds so a long task list
+// cycles into view on its own, but backs off for a few seconds after any
+// manual wheel/touch interaction so it never fights the user.
+const AUTO_SCROLL_TICK_MS = 3000;
+const AUTO_SCROLL_STEP_PX = 54;
+const AUTO_SCROLL_RESUME_DELAY_MS = 6000;
+let autoScrollTimer = null;
+let lastManualScrollAt = {}; // { boardId: timestamp }
 
 function loadSelectedBoardIds() {
   try {
@@ -407,6 +557,17 @@ function statusColor(text) {
   return '#784bd1';
 }
 
+// This dashboard is for tracking what's NOT done (office big-screen use
+// case) — reuses the same "done/complet/closed" wording heuristic as
+// statusColor() so a board's finished items don't clutter the visible task
+// list. Display-only: items are still fully fetched (see fetchAllItemsForBoard)
+// so this doesn't reduce API usage, just what's shown.
+function isDoneStatus(text) {
+  if (!text) return false;
+  const t = String(text).toLowerCase();
+  return t.includes('done') || t.includes('complet') || t.includes('closed');
+}
+
 function timeAgo(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -418,6 +579,38 @@ function timeAgo(iso) {
   if (hrs < 24) return hrs + 'h ago';
   const days = Math.floor(hrs / 24);
   return days + 'd ago';
+}
+
+function formatDuration(ms) {
+  const totalSec = Math.max(0, Math.round(ms / 1000));
+  if (totalSec < 60) return totalSec + 's';
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return sec ? `${min}m ${sec}s` : `${min}m`;
+}
+
+// Small corner widget showing when boards/comments last refreshed and when
+// the next refresh is due — ticks every second (see refreshStatusTimer in
+// showDashboard) independent of the actual poll cadence, purely for display.
+function renderRefreshStatus() {
+  const textEl = document.getElementById('refresh-status-text');
+  const boardsFill = document.getElementById('refresh-bar-boards');
+  const commentsFill = document.getElementById('refresh-bar-comments');
+  if (!textEl) return;
+  const now = Date.now();
+  const parts = [];
+
+  if (lastBoardsRefreshAt) {
+    const since = now - lastBoardsRefreshAt;
+    parts.push(`Boards ${formatDuration(since)} ago`);
+    boardsFill.style.width = Math.min(100, (since / BOARD_REFRESH_MS) * 100) + '%';
+  }
+  if (lastCommentsRefreshAt) {
+    const since = now - lastCommentsRefreshAt;
+    parts.push(`Comments ${formatDuration(since)} ago`);
+    commentsFill.style.width = Math.min(100, (since / COMMENT_POLL_MS) * 100) + '%';
+  }
+  textEl.textContent = parts.join(' · ');
 }
 
 async function mondayQuery(query, variables) {
@@ -432,19 +625,40 @@ async function mondayQuery(query, variables) {
   return json.data;
 }
 
-function findStatusColumns(columns) {
-  return columns.filter(c => c.type === 'status' || c.type === 'color').map(c => c.id);
+// Boards here have no consistent column-naming convention (confirmed across
+// the tracked boards: assignee columns are variously called "Lead",
+// "Accountable"/"Responsible", "Producer"/"Team", "SM Lead"/"Approver",
+// "POC", or just "Person") — that already works below because
+// findPeopleColumns matches by column TYPE, not name. Status is trickier:
+// several boards have MULTIPLE status-typed columns at once (Status,
+// Priority, Label, Country, and per-channel trackers like Email/Call/
+// Whatsapp), and one board's "Kanban" column is status-typed but its labels
+// are actually PEOPLE'S NAMES (Divas, Yash, Suraj...), not statuses. Picking
+// "the first status-type column" arbitrarily surfaced whichever of these
+// happened to come first. Every board inspected does have one column
+// titled exactly "Status", so that's the target now; "Priority" gets its
+// own lookup so it renders as its own chip row instead of racing Status for
+// the same slot.
+function findNamedStatusColumn(columns, nameRegex) {
+  const typed = columns.filter(c => c.type === 'status' || c.type === 'color');
+  return typed.find(c => nameRegex.test(c.title || '')) || null;
+}
+function findStatusColumn(columns) {
+  return findNamedStatusColumn(columns, /^status$/i)
+    || columns.find(c => c.type === 'status' || c.type === 'color')
+    || null;
+}
+function findPriorityColumn(columns) {
+  return findNamedStatusColumn(columns, /^priority$/i);
 }
 function findPeopleColumns(columns) {
   return columns.filter(c => c.type === 'people' || c.type === 'multiple-person').map(c => c.id);
 }
 
-function itemStatus(item, statusColIds) {
-  for (const id of statusColIds) {
-    const v = item.column_values.find(cv => cv.id === id);
-    if (v && v.text) return v.text;
-  }
-  return null;
+function itemColumnText(item, colId) {
+  if (!colId) return null;
+  const v = item.column_values.find(cv => cv.id === colId);
+  return (v && v.text) || null;
 }
 function itemPeople(item, peopleColIds) {
   const names = new Set();
@@ -459,6 +673,70 @@ function itemPeople(item, peopleColIds) {
 
 let refreshTimer = null;
 let accountLabel = 'Boards overview';
+
+const BOARD_ITEMS_PAGE_LIMIT = 500;
+const BOARD_ITEMS_MAX = 2000; // safety cap so one very large board can't stall the rest
+
+// monday.com's items_page is capped per call, so getting a board's FULL item
+// list (some tracked boards run into the hundreds or low-thousands of items
+// — see CLAUDE.md on why a flat 25-item slice was silently hiding most of a
+// board's tasks) means following its cursor via the root-level
+// next_items_page query until it's exhausted or BOARD_ITEMS_MAX is hit.
+// Done per-board rather than combined across all selected boards, so a
+// single huge board can't push one request over monday's complexity budget.
+async function fetchAllItemsForBoard(boardId) {
+  const first = await mondayQuery(`
+    query ($id: ID!) {
+      boards (ids: [$id]) {
+        items_page (
+          limit: ${BOARD_ITEMS_PAGE_LIMIT}
+          query_params: { order_by: [{ column_id: "__last_updated__", direction: desc }] }
+        ) {
+          cursor
+          items { id name updated_at url column_values { id text } }
+        }
+      }
+    }
+  `, { id: boardId });
+
+  const page0 = first.boards && first.boards[0] && first.boards[0].items_page;
+  let items = (page0 && page0.items) || [];
+  let cursor = page0 && page0.cursor;
+
+  while (cursor && items.length < BOARD_ITEMS_MAX) {
+    const next = await mondayQuery(`
+      query ($cursor: String!) {
+        next_items_page (limit: ${BOARD_ITEMS_PAGE_LIMIT}, cursor: $cursor) {
+          cursor
+          items { id name updated_at url column_values { id text } }
+        }
+      }
+    `, { cursor });
+    const page = next.next_items_page;
+    if (!page || !page.items || !page.items.length) break;
+    items = items.concat(page.items);
+    cursor = page.cursor;
+  }
+
+  return items;
+}
+
+// Full account user roster, fetched once per session — powers the check-in
+// summary banner, which needs to know about EVERY person, not just those who
+// happen to have a task assigned somewhere (peopleList below is built from
+// task assignments, so someone with zero assigned tasks would never appear
+// in it even though they're a real employee expected to check in).
+async function fetchAllUsers() {
+  try {
+    const data = await mondayQuery(`query { users (limit: 200) { id name enabled } }`);
+    allUsersCache = (data.users || [])
+      .filter(u => u.enabled)
+      .map(u => ({ id: u.id, name: u.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch (e) {
+    allUsersCache = [];
+  }
+}
 
 async function connect() {
   const errEl = document.getElementById('connect-error');
@@ -496,9 +774,14 @@ function showDashboard() {
   document.getElementById('dashboard').style.display = 'block';
   loadAll();
   if (refreshTimer) clearInterval(refreshTimer);
-  refreshTimer = setInterval(loadAll, 5 * 60 * 1000);
+  refreshTimer = setInterval(loadAll, BOARD_REFRESH_MS);
   if (feedPollTimer) clearInterval(feedPollTimer);
   feedPollTimer = setInterval(refreshCommentFeed, COMMENT_POLL_MS);
+  if (autoScrollTimer) clearInterval(autoScrollTimer);
+  autoScrollTimer = setInterval(autoScrollTick, AUTO_SCROLL_TICK_MS);
+  if (refreshStatusTimer) clearInterval(refreshStatusTimer);
+  refreshStatusTimer = setInterval(renderRefreshStatus, 1000);
+  wirePeopleAutoScroll(); // idempotent — guarded internally, safe if showDashboard() runs more than once
 }
 
 // ---- Workspace picker ----
@@ -651,36 +934,39 @@ async function loadAll() {
   try {
     const ids = selectedBoardIds;
 
-    const detail = await mondayQuery(`
+    const meta = await mondayQuery(`
       query ($ids: [ID!]) {
-        boards (ids: $ids) {
-          id
-          name
-          columns { id title type }
-          items_page (
-            limit: 25
-            query_params: { order_by: [{ column_id: "__last_updated__", direction: desc }] }
-          ) {
-            items { id name updated_at url column_values { id text } }
-          }
-        }
+        boards (ids: $ids) { id name columns { id title type } }
       }
     `, { ids });
+    const metaBoards = meta.boards || [];
+    const isCheckinBoard = b => CHECKIN_BOARD_PATTERN.test(b.name);
 
-    boardsData = (detail.boards || []).map(b => {
-      const items = (b.items_page && b.items_page.items) || [];
+    // Full item list per board (see fetchAllItemsForBoard) — check-in boards
+    // are skipped here since their "items" are just a static roster; their
+    // real activity is read from comments elsewhere (fetchCheckinForPerson /
+    // recentUpdates / computeCheckinStatuses).
+    const itemsByBoard = await Promise.all(metaBoards.map(b =>
+      isCheckinBoard(b) ? Promise.resolve([]) : fetchAllItemsForBoard(b.id).catch(() => [])
+    ));
+
+    boardsData = metaBoards.map((b, idx) => {
+      const items = itemsByBoard[idx];
       // True "last activity" for this board, based on its own items —
       // NOT the board's metadata updated_at, which can reflect structural
       // changes (views, columns) rather than real item activity.
       const latestActivity = items.length
         ? Math.max(...items.map(it => new Date(it.updated_at).getTime()))
         : 0;
+      const statusCol = findStatusColumn(b.columns);
+      const priorityCol = findPriorityColumn(b.columns);
       return {
         id: b.id,
         name: b.name,
-        statusCols: findStatusColumns(b.columns),
+        statusColId: statusCol ? statusCol.id : null,
+        priorityColId: priorityCol ? priorityCol.id : null,
         peopleCols: findPeopleColumns(b.columns),
-        isCheckin: CHECKIN_BOARD_PATTERN.test(b.name),
+        isCheckin: isCheckinBoard(b),
         items,
         latestActivity
       };
@@ -689,11 +975,15 @@ async function loadAll() {
     // Boards with the most recent real activity float to the top.
     boardsData.sort((a, b) => b.latestActivity - a.latestActivity);
 
+    if (!allUsersCache) await fetchAllUsers();
     buildPeopleList();
     personDataCache = {}; // board data changed, drop any cached per-person results
     checkinCache = {};
 
-    await refreshCommentFeed();
+    await refreshCommentFeed(); // fetches + renders comment feed / people-sidebar dots
+    renderPeopleSidebar();
+    renderProjectCards();
+    lastBoardsRefreshAt = Date.now();
     statusEl.textContent = 'Last updated ' + new Date().toLocaleTimeString();
   } catch (e) {
     statusEl.textContent = 'Error loading boards: ' + e.message;
@@ -747,7 +1037,7 @@ function mergeIntoCommentFeed(updates) {
 }
 
 // Fast poll (every COMMENT_POLL_MS) dedicated to the live comment feed —
-// separate from the 5-minute full loadAll() board refresh, since this is a
+// separate from the 10-minute full loadAll() board refresh, since this is a
 // much lighter query safe to call far more often.
 async function refreshCommentFeed() {
   try {
@@ -757,7 +1047,8 @@ async function refreshCommentFeed() {
   } catch (e) {
     // Transient failure — keep showing whatever the feed already has.
   }
-  render();
+  lastCommentsRefreshAt = Date.now();
+  renderFast();
 }
 
 // Fetches each person's own most-recent items directly from monday.com,
@@ -850,49 +1141,106 @@ async function fetchCheckinForPerson(personName) {
   return results;
 }
 
-// Returns the items to display for a board, respecting the current
-// person filter (using the targeted per-person fetch) or falling back
-// to the generic recent-items list when no one is selected.
-function itemsForBoard(b) {
-  if (selectedPerson) {
-    const cache = personDataCache[selectedPerson];
-    return (cache && cache[b.id]) || [];
-  }
-  return b.items;
-}
+// Person popup: clicking someone in the left sidebar opens a summary popup
+// (their active items across boards + recent check-in comments) rather than
+// filtering the center board cards / right comment feed — those two panels
+// always show everyone, regardless of which popup (if any) is open.
+// selectedPerson tracks which popup is currently open, purely to (a) drive
+// the .active highlight in the sidebar and (b) key the personDataCache/
+// checkinCache lookups below.
+async function openPersonPopup(name) {
+  selectedPerson = name;
+  renderPeopleSidebar();
 
-async function selectPerson(name) {
-  selectedPerson = selectedPerson === name ? null : name;
-  renderPeopleBar();
+  document.getElementById('person-popup-title').textContent = name;
+  document.getElementById('person-popup-body').innerHTML = '<div class="muted">Loading…</div>';
+  document.getElementById('person-popup-overlay').classList.add('open');
 
-  if (!selectedPerson) {
-    renderCommentFeed();
-    renderCheckinPanel();
-    renderBoards();
-    return;
-  }
-
-  const statusEl = document.getElementById('status-line');
-  const prevStatus = statusEl.textContent;
-  const needsItems = !personDataCache[selectedPerson];
-  const needsCheckin = !checkinCache[selectedPerson];
+  const needsItems = !personDataCache[name];
+  const needsCheckin = !checkinCache[name];
 
   if (needsItems || needsCheckin) {
-    statusEl.textContent = `Loading ${selectedPerson}'s items…`;
     const [itemsResult, checkinResult] = await Promise.all([
-      needsItems ? fetchPersonAcrossBoards(selectedPerson).catch(() => ({})) : Promise.resolve(personDataCache[selectedPerson]),
-      needsCheckin ? fetchCheckinForPerson(selectedPerson).catch(() => []) : Promise.resolve(checkinCache[selectedPerson])
+      needsItems ? fetchPersonAcrossBoards(name).catch(() => ({})) : Promise.resolve(personDataCache[name]),
+      needsCheckin ? fetchCheckinForPerson(name).catch(() => []) : Promise.resolve(checkinCache[name])
     ]);
-    personDataCache[selectedPerson] = itemsResult;
-    checkinCache[selectedPerson] = checkinResult;
-    statusEl.textContent = prevStatus;
+    personDataCache[name] = itemsResult;
+    checkinCache[name] = checkinResult;
   }
 
-  renderCommentFeed();
-  renderCheckinPanel();
-  renderBoards();
+  // The popup may have been closed, or reopened for someone else, while
+  // this fetch was in flight — don't clobber whatever's showing now.
+  if (selectedPerson === name) renderPersonPopup(name);
 }
 
+function closePersonPopup() {
+  selectedPerson = null;
+  document.getElementById('person-popup-overlay').classList.remove('open');
+  renderPeopleSidebar();
+}
+
+function renderPersonPopup(name) {
+  const itemsByBoard = personDataCache[name] || {};
+  const checkinEntries = checkinCache[name] || [];
+
+  const boardGroups = projectBoards()
+    .map(b => ({ board: b, items: itemsByBoard[b.id] || [] }))
+    .filter(g => g.items.length > 0);
+
+  const itemsHtml = boardGroups.map(g => `
+    <div class="popup-board-group">
+      <div class="popup-board-name">${escapeHtml(g.board.name)}</div>
+      <ul class="recent-list">
+        ${g.items.map(it => `
+          <li>
+            <span class="dot" style="background:${statusColor(itemColumnText(it, g.board.statusColId))}"></span>
+            <a href="${escapeHtml(it.url || '#')}" target="_blank" rel="noopener">${escapeHtml(it.name)}</a>
+            <span class="time">${timeAgo(it.updated_at)}</span>
+          </li>
+        `).join('')}
+      </ul>
+    </div>
+  `).join('') || '<div class="muted">No active items found.</div>';
+
+  const allCheckinUpdates = [];
+  checkinEntries.forEach(entry => entry.updates.forEach(u => allCheckinUpdates.push(u)));
+  allCheckinUpdates.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  const checkinHtml = allCheckinUpdates.slice(0, 5).map(u => {
+    const snippet = (u.text_body || '').trim().slice(0, 220);
+    return `
+      <li>
+        <div class="checkin-meta">
+          <span class="dot" style="background:#00c875"></span>
+          <strong>${escapeHtml(u.creator ? u.creator.name : name)}</strong>
+          <span class="time">${timeAgo(u.created_at)}</span>
+        </div>
+        ${snippet ? `<div class="checkin-snippet">${escapeHtml(snippet)}${(u.text_body || '').length > 220 ? '…' : ''}</div>` : ''}
+      </li>
+    `;
+  }).join('') || '<li class="muted">No check-in comments found for this person yet.</li>';
+
+  const hasCheckinBoard = boardsData.some(b => b.isCheckin);
+
+  document.getElementById('person-popup-title').textContent = name;
+  document.getElementById('person-popup-body').innerHTML = `
+    <div class="popup-section">
+      <div class="popup-section-title">Active items</div>
+      ${itemsHtml}
+    </div>
+    ${hasCheckinBoard ? `
+    <div class="popup-section">
+      <div class="popup-section-title">Recent check-ins</div>
+      <ul class="checkin-list">${checkinHtml}</ul>
+    </div>` : ''}
+  `;
+}
+
+// The people sidebar is the single roster of people — roster-first (from
+// allUsersCache, which fetchAllUsers() already restricts to enabled users)
+// so someone with zero assigned tasks still shows up, and so a deleted/
+// disabled former employee who's merely still referenced on some old task
+// does NOT show up just because they have a nonzero task count.
 function buildPeopleList() {
   const counts = {};
   projectBoards().forEach(b => {
@@ -902,49 +1250,85 @@ function buildPeopleList() {
       });
     });
   });
-  peopleList = Object.entries(counts)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 30);
+
+  const roster = (allUsersCache && allUsersCache.length)
+    ? allUsersCache.map(u => u.name)
+    : Object.keys(counts);
+
+  peopleList = roster
+    .map(name => ({ name, count: counts[name] || 0 }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
 function render() {
-  renderPeopleBar();
-  renderCommentFeed();
-  renderCheckinPanel();
-  renderBoards();
+  renderPeopleSidebar();
+  renderFast();
+  renderProjectCards();
 }
 
-function renderPeopleBar() {
-  const bar = document.getElementById('people-bar');
-  const chips = peopleList.map(p => `
-    <span class="person-chip ${p.name === selectedPerson ? 'active' : ''}" data-name="${escapeHtml(p.name)}">
-      ${escapeHtml(p.name)} · ${p.count}
-    </span>
-  `).join('');
-  bar.innerHTML = '<span class="label">People</span>' + chips;
-  bar.querySelectorAll('.person-chip').forEach(el => {
-    el.addEventListener('click', () => {
-      const name = el.getAttribute('data-name');
-      selectPerson(name);
-    });
+// The subset of rendering that's cheap and safe to run on every fast
+// comment-feed poll (COMMENT_POLL_MS) — deliberately excludes
+// renderProjectCards(), whose DOM (and manual/auto scroll state — see
+// AUTO_SCROLL_* below) would otherwise get wiped every few seconds for no
+// reason, since project board data only actually changes on loadAll().
+function renderFast() {
+  renderCommentFeed();
+  renderPeopleSidebar(); // check-in dots depend on commentFeed, which this poll refreshed
+  renderRefreshStatus();
+}
+
+function renderPeopleSidebar() {
+  const listEl = document.getElementById('people-col-list');
+  const statuses = computeCheckinStatuses(); // null if no check-in board is tracked
+  const checkedInByName = {};
+  if (statuses) statuses.forEach(s => { checkedInByName[s.name] = s.checkedIn; });
+  const afterGateHour = new Date().getHours() >= CHECKIN_HOUR_GATE;
+
+  listEl.innerHTML = peopleList.map(p => {
+    let dot = '';
+    if (statuses) {
+      const checkedIn = checkedInByName[p.name];
+      const color = checkedIn ? '#00c875' : (afterGateHour ? '#df2f4a' : '#c4c4c4');
+      dot = `<span class="dot" style="background:${color}"></span>`;
+    }
+    return `
+    <div class="person-row ${p.name === selectedPerson ? 'active' : ''}" data-name="${escapeHtml(p.name)}">
+      ${dot}<span class="prow-name">${escapeHtml(p.name)}</span>${p.count ? `<span class="prow-count">${p.count}</span>` : ''}
+    </div>
+  `;
+  }).join('') || '<div class="muted" style="padding:8px;">No people found.</div>';
+
+  listEl.querySelectorAll('.person-row').forEach(el => {
+    el.addEventListener('click', () => openPersonPopup(el.getAttribute('data-name')));
   });
+}
+
+// "Today" / "Yesterday" / weekday-or-date label for a comment's day, used to
+// insert dividers into the feed so old and new activity don't blur together.
+function dayLabel(iso) {
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 function renderCommentFeed() {
   const listEl = document.getElementById('comment-feed-list');
-  // Newest first, already-sorted by mergeIntoCommentFeed; when a person is
-  // selected, narrow the feed to their own comments only.
-  const filtered = selectedPerson
-    ? commentFeed.filter(u => u.creator && u.creator.name === selectedPerson)
-    : commentFeed;
-
-  listEl.innerHTML = filtered.map(u => {
+  // Newest first, already-sorted by mergeIntoCommentFeed. Always shows every
+  // tracked-board comment — the person popup is a separate, non-filtering view.
+  let lastDay = null;
+  listEl.innerHTML = commentFeed.map(u => {
     const boardName = (u.item && u.item.board && u.item.board.name) || '';
     const itemName = (u.item && u.item.name) || '';
     const author = u.creator ? u.creator.name : 'Someone';
     const raw = (u.text_body || '').trim();
+    const day = dayLabel(u.created_at);
+    const divider = day !== lastDay ? `<div class="cf-day-divider">${escapeHtml(day)}</div>` : '';
+    lastDay = day;
     return `
+      ${divider}
       <div class="comment-row">
         <div class="cf-meta">
           <span class="dot" style="background:#00c875"></span>
@@ -958,124 +1342,153 @@ function renderCommentFeed() {
   }).join('') || '<div class="muted" style="padding:12px;">No recent comments found.</div>';
 }
 
-function renderCheckinPanel() {
-  const panel = document.getElementById('checkin-panel');
-  const hasCheckinBoard = boardsData.some(b => b.isCheckin);
-
-  if (!selectedPerson || !hasCheckinBoard) {
-    panel.style.display = 'none';
-    return;
-  }
-
-  const perBoard = checkinCache[selectedPerson] || [];
-  const allUpdates = [];
-  perBoard.forEach(entry => {
-    entry.updates.forEach(u => allUpdates.push(u));
-  });
-  allUpdates.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-  document.getElementById('checkin-title').textContent = `${selectedPerson} — check-ins`;
-  document.getElementById('checkin-list').innerHTML = allUpdates.slice(0, 5).map(u => {
-    const snippet = (u.text_body || '').trim().slice(0, 220);
-    return `
-      <li>
-        <div class="checkin-meta">
-          <span class="dot" style="background:#00c875"></span>
-          <strong>${escapeHtml(u.creator ? u.creator.name : selectedPerson)}</strong>
-          <span class="time">${timeAgo(u.created_at)}</span>
-        </div>
-        ${snippet ? `<div class="checkin-snippet">${escapeHtml(snippet)}${(u.text_body || '').length > 220 ? '…' : ''}</div>` : ''}
-      </li>
-    `;
-  }).join('') || '<li class="muted">No check-in comments found for this person yet.</li>';
-  panel.style.display = 'block';
-}
-
-// The check-in "board" itself is just a static roster (one item per
-// employee, with a stale updated_at) — so instead of a normal item-based
-// card, this builds a "who's checked in recently" summary from the real
-// comment activity (recentUpdates), one row per person's latest comment.
-function renderCheckinBoardCard() {
+// A comment posted on the check-in board today counts as "checked in" —
+// same "comments, not column edits" behavior as fetchCheckinForPerson,
+// just aggregated across the whole roster instead of one person at a time.
+// Reuses the already-polled commentFeed (see quirk #9 in CLAUDE.md) rather
+// than firing a fresh per-person query for every person in the account.
+function computeCheckinStatuses() {
   const checkinBoards = boardsData.filter(b => b.isCheckin);
-  if (!checkinBoards.length) return '';
+  if (!checkinBoards.length || !allUsersCache || !allUsersCache.length) return null;
 
   const checkinBoardNames = new Set(checkinBoards.map(b => b.name));
-  const updates = recentUpdates.filter(u =>
-    u.item && u.item.board && checkinBoardNames.has(u.item.board.name) &&
-    (!selectedPerson || (u.creator && u.creator.name === selectedPerson))
-  );
-
-  const latestByPerson = {};
-  updates.forEach(u => {
-    const name = u.creator ? u.creator.name : 'Unknown';
-    if (!latestByPerson[name] || new Date(u.created_at) > new Date(latestByPerson[name].created_at)) {
-      latestByPerson[name] = u;
-    }
+  const today = new Date().toDateString();
+  const checkedInNames = new Set();
+  commentFeed.forEach(u => {
+    if (!u.item || !u.item.board || !checkinBoardNames.has(u.item.board.name)) return;
+    if (!u.creator) return;
+    if (new Date(u.created_at).toDateString() !== today) return;
+    checkedInNames.add(u.creator.name);
   });
 
-  const list = Object.values(latestByPerson)
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-    .slice(0, 10);
-
-  const rows = list.map(u => {
-    const snippet = (u.text_body || '').trim().replace(/\s+/g, ' ').slice(0, 70);
-    return `
-      <li>
-        <span class="dot" style="background:#00c875"></span>
-        <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-          <strong>${escapeHtml(u.creator ? u.creator.name : 'Unknown')}</strong>${snippet ? ' — ' + escapeHtml(snippet) : ''}
-        </span>
-        <span class="time">${timeAgo(u.created_at)}</span>
-      </li>
-    `;
-  }).join('') || '<li class="muted">No check-in comments found yet.</li>';
-
-  return `
-    <div class="card">
-      <div class="card-title"><span>Daily - Check in / Check out</span><span class="count-total">${list.length} people</span></div>
-      <ul class="recent-list">${rows}</ul>
-    </div>
-  `;
+  return allUsersCache.map(p => ({ name: p.name, checkedIn: checkedInNames.has(p.name) }));
 }
 
-function renderBoards() {
-  const checkinCardHtml = renderCheckinBoardCard();
+// Rendered into its own slot (#project-cards-slot) — see the renderFast()
+// comment above. Only loadAll() calls this, which is what lets the
+// auto-scroll cycling below run smoothly instead of resetting every few
+// seconds. Always shows every board's full item set — the person popup is a
+// separate, non-filtering view (see openPersonPopup).
+function renderProjectCards() {
+  const slot = document.getElementById('project-cards-slot');
   const cardsHtml = projectBoards().map(b => {
-    const items = itemsForBoard(b);
-    const counts = {};
-    items.forEach(it => {
-      const s = itemStatus(it, b.statusCols) || 'No status';
-      counts[s] = (counts[s] || 0) + 1;
+    const items = b.items;
+
+    // Done/completed/closed items are excluded from the visible list (this
+    // is a "what's not done yet" big-screen dashboard) — the status/priority
+    // breakdown below is built from this same active set, NOT all items, so
+    // it matches what's actually shown instead of being dominated by
+    // finished work that's deliberately hidden. Not literally every
+    // remaining item gets a DOM row on huge boards (Post Production Task
+    // alone has 1000+ items) — 200 keeps scrolling/cycling snappy while far
+    // beyond the old flat 5/25 caps.
+    const activeItems = items.filter(it => !isDoneStatus(itemColumnText(it, b.statusColId)));
+
+    const statusCounts = {};
+    const priorityCounts = {};
+    activeItems.forEach(it => {
+      const s = itemColumnText(it, b.statusColId) || 'No status';
+      statusCounts[s] = (statusCounts[s] || 0) + 1;
+      if (b.priorityColId) {
+        const p = itemColumnText(it, b.priorityColId) || 'No priority';
+        priorityCounts[p] = (priorityCounts[p] || 0) + 1;
+      }
     });
-    const countsHtml = Object.entries(counts)
-      .sort((a, b2) => b2[1] - a[1])
-      .map(([label, count]) => `
+
+    // Capped to the top 3 statuses by count (+N more folded into one chip)
+    // so the row stays one line regardless of how many distinct statuses a
+    // board has, instead of wrapping and inflating card height.
+    const CHIP_CAP = 3;
+    const chipRow = counts => {
+      const entries = Object.entries(counts).sort((a, c) => c[1] - a[1]);
+      const shown = entries.slice(0, CHIP_CAP).map(([label, count]) => `
         <span class="count-chip" style="background:${statusColor(label)}26;color:${statusColor(label)}">${escapeHtml(label)} · ${count}</span>
       `).join('');
-    const recent = [...items]
-      .sort((a, b2) => new Date(b2.updated_at) - new Date(a.updated_at))
-      .slice(0, 5)
+      const restCount = entries.slice(CHIP_CAP).reduce((sum, [, c]) => sum + c, 0);
+      const more = restCount > 0 ? `<span class="count-chip more-chip">+${restCount} more</span>` : '';
+      return shown + more;
+    };
+
+    const statusChips = chipRow(statusCounts);
+    const priorityChips = b.priorityColId ? chipRow(priorityCounts) : '';
+
+    const recent = [...activeItems]
+      .sort((a, c) => new Date(c.updated_at) - new Date(a.updated_at))
+      .slice(0, 200)
       .map(it => `
         <li>
-          <span class="dot" style="background:${statusColor(itemStatus(it, b.statusCols))}"></span>
+          <span class="dot" style="background:${statusColor(itemColumnText(it, b.statusColId))}"></span>
           <a href="${escapeHtml(it.url || '#')}" target="_blank" rel="noopener">${escapeHtml(it.name)}</a>
           <span class="time">${timeAgo(it.updated_at)}</span>
         </li>
       `).join('');
 
-    if (selectedPerson && items.length === 0) return '';
-
     return `
       <div class="card">
-        <div class="card-title"><span>${escapeHtml(b.name)}</span><span class="count-total">${items.length} items</span></div>
-        <div class="chips">${countsHtml || '<span class="muted">No status data</span>'}</div>
-        <ul class="recent-list">${recent || '<li class="muted">No items</li>'}</ul>
+        <div class="card-title"><span>${escapeHtml(b.name)}</span><span class="count-total">${activeItems.length} active / ${items.length} total</span></div>
+        <div class="chips-row-label">Status</div>
+        <div class="chips">${statusChips || '<span class="muted">No status data</span>'}</div>
+        ${b.priorityColId ? `<div class="chips-row-label">Priority</div><div class="chips">${priorityChips || '<span class="muted">No priority data</span>'}</div>` : ''}
+        <ul class="recent-list" data-board-id="${b.id}">${recent || '<li class="muted">No active items</li>'}</ul>
       </div>
     `;
   }).join('');
 
-  const combined = checkinCardHtml + cardsHtml;
-  document.getElementById('boards-grid').innerHTML = combined || '<p class="muted" style="padding:0 4px;">No boards to show.</p>';
+  slot.innerHTML = cardsHtml || '<p class="muted" style="padding:0 4px;">No boards to show.</p>';
+  wireAutoScrollLists();
+}
+
+// Auto-scroll ("both scrollable and auto-cycling", per product decision):
+// a tick every AUTO_SCROLL_TICK_MS nudges each card's task list (and the
+// people sidebar) forward so a long list cycles into view on its own,
+// wrapping to the top at the bottom. Backs off for AUTO_SCROLL_RESUME_DELAY_MS
+// after any manual wheel/touch interaction (tracked per list id in
+// lastManualScrollAt) or while the pointer is hovering the list, so it never
+// fights a user actively scrolling — this is a passive kiosk display most of
+// the time, so lists shouldn't just sit there requiring a manual scroll to
+// ever be seen in full.
+const PEOPLE_SCROLL_KEY = '__people__';
+
+function wireAutoScrollLists() {
+  document.querySelectorAll('#project-cards-slot .recent-list[data-board-id]').forEach(el => {
+    const id = el.getAttribute('data-board-id');
+    const markManual = () => { lastManualScrollAt[id] = Date.now(); };
+    el.addEventListener('wheel', markManual, { passive: true });
+    el.addEventListener('touchmove', markManual, { passive: true });
+  });
+}
+
+// The people sidebar list element is created once in the static HTML and
+// only ever has its innerHTML replaced (see renderPeopleSidebar), so its
+// scroll listeners only need wiring once — unlike the per-board lists above,
+// which get recreated on every loadAll() and are rewired via wireAutoScrollLists.
+let peopleAutoScrollWired = false;
+function wirePeopleAutoScroll() {
+  if (peopleAutoScrollWired) return; // showDashboard() can run more than once (e.g. after editing boards)
+  const el = document.getElementById('people-col-list');
+  if (!el) return;
+  const markManual = () => { lastManualScrollAt[PEOPLE_SCROLL_KEY] = Date.now(); };
+  el.addEventListener('wheel', markManual, { passive: true });
+  el.addEventListener('touchmove', markManual, { passive: true });
+  peopleAutoScrollWired = true;
+}
+
+function autoScrollStep(el, id, now) {
+  const last = lastManualScrollAt[id] || 0;
+  if (now - last < AUTO_SCROLL_RESUME_DELAY_MS) return;
+  if (el.matches(':hover')) return;
+  if (el.scrollHeight <= el.clientHeight) return; // nothing to scroll
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+  el.scrollTo({ top: atBottom ? 0 : el.scrollTop + AUTO_SCROLL_STEP_PX, behavior: 'smooth' });
+}
+
+function autoScrollTick() {
+  const now = Date.now();
+  document.querySelectorAll('#project-cards-slot .recent-list[data-board-id]').forEach(el => {
+    autoScrollStep(el, el.getAttribute('data-board-id'), now);
+  });
+  const peopleEl = document.getElementById('people-col-list');
+  if (peopleEl) autoScrollStep(peopleEl, PEOPLE_SCROLL_KEY, now);
 }
 
 document.getElementById('connect-btn').addEventListener('click', connect);
@@ -1096,6 +1509,10 @@ document.getElementById('picker-change-workspace-btn').addEventListener('click',
 document.getElementById('workspace-picker-cancel-btn').addEventListener('click', () => {
   if (workspacePickerReturnTo === 'boardPicker') openPicker(true);
   else showDashboard();
+});
+document.getElementById('person-popup-close').addEventListener('click', closePersonPopup);
+document.getElementById('person-popup-overlay').addEventListener('click', e => {
+  if (e.target.id === 'person-popup-overlay') closePersonPopup(); // backdrop click, not the popup itself
 });
 
 // Auto-connect if a token is already in this tab's session
