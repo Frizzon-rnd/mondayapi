@@ -655,6 +655,39 @@ function findPeopleColumns(columns) {
   return columns.filter(c => c.type === 'people' || c.type === 'multiple-person').map(c => c.id);
 }
 
+// Builds a column_values(ids: [...]) filter for just the columns this app
+// actually reads (status, priority, people) instead of fetching every column
+// on a board for every item — the rest (dates, files, formulas, whatever
+// custom columns exist) is fetched and thrown away today for no reason.
+// Returns '' (no filter, fetch everything) if a board somehow has none of
+// the three, which just falls back to the old behavior rather than fetching
+// zero columns.
+function columnIdsFilter(columnIds) {
+  return columnIds.length ? `(ids: [${columnIds.map(id => `"${id}"`).join(',')}])` : '';
+}
+
+// Status/color-type columns store their label text in settings_str as JSON
+// (e.g. {"labels":{"0":"Working on it","1":"Done",...}}). Matching the same
+// "done/complet/closed" wording heuristic used elsewhere (isDoneStatus,
+// statusColor) against those labels lets the item FETCH itself skip done
+// items server-side (see fetchAllItemsForBoard), instead of pulling
+// everything and hiding them client-side — the real API/complexity budget
+// win, since done items are often the majority on a mature board. Fails
+// open (returns []) on any unexpected settings_str shape, which just means
+// no server-side filtering for that board — nothing is silently dropped.
+function doneStatusIndices(column) {
+  try {
+    const settings = JSON.parse(column.settings_str || '{}');
+    const labels = settings.labels || {};
+    return Object.entries(labels)
+      .filter(([, label]) => isDoneStatus(label))
+      .map(([index]) => Number(index))
+      .filter(n => Number.isInteger(n));
+  } catch (e) {
+    return [];
+  }
+}
+
 function itemColumnText(item, colId) {
   if (!colId) return null;
   const v = item.column_values.find(cv => cv.id === colId);
@@ -684,16 +717,30 @@ const BOARD_ITEMS_MAX = 2000; // safety cap so one very large board can't stall 
 // next_items_page query until it's exhausted or BOARD_ITEMS_MAX is hit.
 // Done per-board rather than combined across all selected boards, so a
 // single huge board can't push one request over monday's complexity budget.
-async function fetchAllItemsForBoard(boardId) {
+//
+// excludeStatus (optional {colId, indices}) adds a query_params rule that
+// skips done/completed/closed items server-side (see doneStatusIndices) —
+// the actual API/complexity budget reduction, since fetching stops pulling
+// items that would just be filtered out client-side anyway. next_items_page
+// only takes a cursor, but monday's cursor already encodes the original
+// query's filter/sort, so the exclusion carries through every page without
+// needing to be repeated. columnIds narrows column_values to just the
+// columns this app reads (see columnIdsFilter) instead of every column on
+// the board.
+async function fetchItemsPage(boardId, excludeStatus, columnIds) {
+  const rules = excludeStatus
+    ? `, rules: [{ column_id: "${excludeStatus.colId}", compare_value: [${excludeStatus.indices.join(',')}], operator: not_any_of }]`
+    : '';
+  const cvFilter = columnIdsFilter(columnIds || []);
   const first = await mondayQuery(`
     query ($id: ID!) {
       boards (ids: [$id]) {
         items_page (
           limit: ${BOARD_ITEMS_PAGE_LIMIT}
-          query_params: { order_by: [{ column_id: "__last_updated__", direction: desc }] }
+          query_params: { order_by: [{ column_id: "__last_updated__", direction: desc }]${rules} }
         ) {
           cursor
-          items { id name updated_at url column_values { id text } }
+          items { id name updated_at url column_values${cvFilter} { id text } }
         }
       }
     }
@@ -708,7 +755,7 @@ async function fetchAllItemsForBoard(boardId) {
       query ($cursor: String!) {
         next_items_page (limit: ${BOARD_ITEMS_PAGE_LIMIT}, cursor: $cursor) {
           cursor
-          items { id name updated_at url column_values { id text } }
+          items { id name updated_at url column_values${cvFilter} { id text } }
         }
       }
     `, { cursor });
@@ -719,6 +766,20 @@ async function fetchAllItemsForBoard(boardId) {
   }
 
   return items;
+}
+
+async function fetchAllItemsForBoard(boardId, excludeStatus, columnIds) {
+  try {
+    return await fetchItemsPage(boardId, excludeStatus, columnIds);
+  } catch (e) {
+    if (!excludeStatus) throw e;
+    // The exclusion rule may not be valid for this board's particular
+    // status/color-type column (label indices are a best-effort parse of
+    // settings_str) — fail OPEN by refetching without the filter rather than
+    // letting the whole board silently come back empty (see CLAUDE.md quirk
+    // #4: a query error here must never look like "this board has no items").
+    return await fetchItemsPage(boardId, null, columnIds);
+  }
 }
 
 // Full account user roster, fetched once per session — powers the check-in
@@ -936,19 +997,38 @@ async function loadAll() {
 
     const meta = await mondayQuery(`
       query ($ids: [ID!]) {
-        boards (ids: $ids) { id name columns { id title type } }
+        boards (ids: $ids) { id name columns { id title type settings_str } }
       }
     `, { ids });
     const metaBoards = meta.boards || [];
     const isCheckinBoard = b => CHECKIN_BOARD_PATTERN.test(b.name);
 
+    // Resolved once per board here (not inside the .map() below) because the
+    // done-item exclusion filter needs the status column BEFORE fetching
+    // items, not after.
+    const boardMeta = metaBoards.map(b => ({
+      statusCol: findStatusColumn(b.columns),
+      priorityCol: findPriorityColumn(b.columns),
+      peopleCols: findPeopleColumns(b.columns)
+    }));
+
     // Full item list per board (see fetchAllItemsForBoard) — check-in boards
     // are skipped here since their "items" are just a static roster; their
     // real activity is read from comments elsewhere (fetchCheckinForPerson /
-    // recentUpdates / computeCheckinStatuses).
-    const itemsByBoard = await Promise.all(metaBoards.map(b =>
-      isCheckinBoard(b) ? Promise.resolve([]) : fetchAllItemsForBoard(b.id).catch(() => [])
-    ));
+    // recentUpdates / computeCheckinStatuses). Done/completed/closed items
+    // are excluded server-side via excludeStatus wherever a status column's
+    // labels can be resolved (see doneStatusIndices) — this dashboard only
+    // cares about what's not done, so there's no reason to pull them at all.
+    // column_values is also narrowed to just status/priority/people columns
+    // (see columnIdsFilter) instead of every column on the board.
+    const itemsByBoard = await Promise.all(metaBoards.map((b, idx) => {
+      if (isCheckinBoard(b)) return Promise.resolve([]);
+      const { statusCol, priorityCol, peopleCols } = boardMeta[idx];
+      const indices = statusCol ? doneStatusIndices(statusCol) : [];
+      const excludeStatus = indices.length ? { colId: statusCol.id, indices } : null;
+      const columnIds = [statusCol && statusCol.id, priorityCol && priorityCol.id, ...peopleCols].filter(Boolean);
+      return fetchAllItemsForBoard(b.id, excludeStatus, columnIds).catch(() => []);
+    }));
 
     boardsData = metaBoards.map((b, idx) => {
       const items = itemsByBoard[idx];
@@ -958,14 +1038,13 @@ async function loadAll() {
       const latestActivity = items.length
         ? Math.max(...items.map(it => new Date(it.updated_at).getTime()))
         : 0;
-      const statusCol = findStatusColumn(b.columns);
-      const priorityCol = findPriorityColumn(b.columns);
+      const { statusCol, priorityCol, peopleCols } = boardMeta[idx];
       return {
         id: b.id,
         name: b.name,
         statusColId: statusCol ? statusCol.id : null,
         priorityColId: priorityCol ? priorityCol.id : null,
-        peopleCols: findPeopleColumns(b.columns),
+        peopleCols,
         isCheckin: isCheckinBoard(b),
         items,
         latestActivity
@@ -1065,6 +1144,8 @@ async function fetchPersonAcrossBoards(personName) {
   const escaped = JSON.stringify(personName);
   const parts = targets.map((b, idx) => {
     const rules = b.peopleCols.map(id => `{ column_id: "${id}", compare_value: [${escaped}], operator: contains_text }`);
+    const columnIds = [b.statusColId, b.priorityColId, ...b.peopleCols].filter(Boolean);
+    const cvFilter = columnIdsFilter(columnIds);
     return `
       p${idx}: boards(ids: [${b.id}]) {
         items_page(
@@ -1075,7 +1156,7 @@ async function fetchPersonAcrossBoards(personName) {
             order_by: [{ column_id: "__last_updated__", direction: desc }]
           }
         ) {
-          items { id name updated_at url column_values { id text } }
+          items { id name updated_at url column_values${cvFilter} { id text } }
         }
       }
     `;
