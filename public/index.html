@@ -327,6 +327,27 @@
   .muted { color: #9aa0a6; }
   .card-error { color: #df2f4a; font-size: 12px; }
 
+  /* ---- Focus View (Projects/Pitches split, see LABEL_COLUMN_PATTERN) ---- */
+  .focus-view { display: flex; flex-direction: column; gap: 10px; }
+  .focus-group .chips-row-label { margin: 0 0 4px; }
+  .focus-list { max-height: 150px; }
+
+  /* ---- Per-task meta row (deadline/label/status/priority side by side) ----
+     Overrides the base .recent-list li flex layout (used unmodified by the
+     person popup, which stays a single flex row) only for rows that also
+     carry a meta chip line underneath the task itself. */
+  .recent-list li.task-item { display: block; }
+  .task-row { display: flex; align-items: center; gap: 6px; }
+  .task-row a { color: #1a1a1a; text-decoration: none; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task-row a:hover { text-decoration: underline; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 0 14px; }
+  .meta-chip { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 8px; background: #f0f1f3; color: #6b7280; white-space: nowrap; }
+  .meta-chip-deadline { background: #eef2ff; color: #4338ca; }
+  /* Not updated in 24h+ — surfaced per CEO ask so a stalled task is obvious
+     at a glance instead of requiring someone to read every timestamp. */
+  .recent-list li.task-item.stale { background: rgba(223,47,74,0.06); border-radius: 6px; }
+  .recent-list li.task-item.stale .time { color: #df2f4a; font-weight: 700; }
+
   /* ---- Auto-hide scrollbars ----
      Applies to the scrollable regions (comment feed, project card task
      lists): invisible at rest, thin + visible only while hovering that
@@ -433,6 +454,26 @@
 
 <script>
 const CHECKIN_BOARD_PATTERN = /check[\s-]?in/i;
+// Employees post BOTH a "Check In" and a "Check Out" comment on their item
+// on the check-in board over the course of a day (confirmed against real
+// comments — e.g. "CHECK-OUT: 21 May 2026...", "Check out update:..."), with
+// no separate structured column marking which is which (same "comments, not
+// columns" situation as CLAUDE.md quirk #1/#7). Whichever of the two came
+// LAST today decides the dot: still green if their latest comment today was
+// a check-in, red again once it's a check-out — see computeCheckinStatuses.
+const CHECKOUT_PATTERN = /check[\s-]?out/i;
+// "Focus View" split (Project Manager Frizzon board): that board has a
+// second status/color-typed column literally titled "Label" (distinct from
+// its "Status" column) whose values are "Project", "Pitches", "Follow
+// Up/Limbo", "BD", "No updates", etc. Product wants that card broken into
+// separate Projects/Pitches sections (green/yellow) with the Follow Up/Limbo
+// and No updates buckets hidden entirely — done generically off the column
+// title so it'd also kick in for any other board with the same "Label"
+// column convention, rather than hardcoding a board id.
+const LABEL_COLUMN_PATTERN = /^label$/i;
+const FOCUS_PROJECT_PATTERN = /project/i;
+const FOCUS_PITCH_PATTERN = /pitch/i;
+const FOCUS_HIDDEN_LABEL_PATTERN = /follow\s*up|limbo|no\s*update/i;
 // Auto-generated subitem boards are never something you'd deliberately
 // pick, so they're hidden from the picker itself (pure noise reduction,
 // not a "which boards matter" judgment call).
@@ -568,6 +609,20 @@ function isDoneStatus(text) {
   return t.includes('done') || t.includes('complet') || t.includes('closed');
 }
 
+const STALE_UPDATE_MS = 24 * 60 * 60 * 1000;
+function isStaleUpdate(iso) {
+  if (!iso) return false;
+  return Date.now() - new Date(iso).getTime() > STALE_UPDATE_MS;
+}
+
+// Prefers the item's last comment time (lastCommentAt, only populated when
+// fetched with includeLastComment — see fetchItemsPage) over updated_at,
+// which doesn't move when someone just comments on a task (quirk #1). Falls
+// back to updated_at for every other board, so this is a no-op there.
+function effectiveActivityTime(it) {
+  return it.lastCommentAt || it.updated_at;
+}
+
 function timeAgo(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -651,6 +706,12 @@ function findStatusColumn(columns) {
 function findPriorityColumn(columns) {
   return findNamedStatusColumn(columns, /^priority$/i);
 }
+function findLabelColumn(columns) {
+  return findNamedStatusColumn(columns, LABEL_COLUMN_PATTERN);
+}
+function findDeadlineColumn(columns) {
+  return columns.find(c => c.type === 'date' && /deadline/i.test(c.title || '')) || null;
+}
 function findPeopleColumns(columns) {
   return columns.filter(c => c.type === 'people' || c.type === 'multiple-person').map(c => c.id);
 }
@@ -727,11 +788,25 @@ const BOARD_ITEMS_MAX = 2000; // safety cap so one very large board can't stall 
 // needing to be repeated. columnIds narrows column_values to just the
 // columns this app reads (see columnIdsFilter) instead of every column on
 // the board.
-async function fetchItemsPage(boardId, excludeStatus, columnIds) {
+// includeLastComment adds each item's own recent updates (comments) to the
+// query so recency can be computed from actual comment activity instead of
+// updated_at, which only reflects column value changes (see CLAUDE.md quirk
+// #1 — the same reason check-in freshness reads from comments elsewhere).
+// Opt-in only (see loadAll) rather than on for every board: it's an extra
+// nested field on every item, and most tracked boards can run into the
+// hundreds/low-thousands of items (quirk #4's complexity budget), so it's
+// only requested for boards that actually need comment-based recency.
+function maxCreatedAt(updates) {
+  if (!updates || !updates.length) return null;
+  return updates.reduce((max, u) => (!max || new Date(u.created_at) > new Date(max)) ? u.created_at : max, null);
+}
+
+async function fetchItemsPage(boardId, excludeStatus, columnIds, includeLastComment) {
   const rules = excludeStatus
     ? `, rules: [{ column_id: "${excludeStatus.colId}", compare_value: [${excludeStatus.indices.join(',')}], operator: not_any_of }]`
     : '';
   const cvFilter = columnIdsFilter(columnIds || []);
+  const updatesField = includeLastComment ? 'updates(limit: 10) { created_at }' : '';
   const first = await mondayQuery(`
     query ($id: ID!) {
       boards (ids: [$id]) {
@@ -740,7 +815,7 @@ async function fetchItemsPage(boardId, excludeStatus, columnIds) {
           query_params: { order_by: [{ column_id: "__last_updated__", direction: desc }]${rules} }
         ) {
           cursor
-          items { id name updated_at url column_values${cvFilter} { id text } }
+          items { id name updated_at url column_values${cvFilter} { id text } ${updatesField} }
         }
       }
     }
@@ -755,7 +830,7 @@ async function fetchItemsPage(boardId, excludeStatus, columnIds) {
       query ($cursor: String!) {
         next_items_page (limit: ${BOARD_ITEMS_PAGE_LIMIT}, cursor: $cursor) {
           cursor
-          items { id name updated_at url column_values${cvFilter} { id text } }
+          items { id name updated_at url column_values${cvFilter} { id text } ${updatesField} }
         }
       }
     `, { cursor });
@@ -765,12 +840,16 @@ async function fetchItemsPage(boardId, excludeStatus, columnIds) {
     cursor = page.cursor;
   }
 
+  if (includeLastComment) {
+    items = items.map(it => ({ ...it, lastCommentAt: maxCreatedAt(it.updates) }));
+  }
+
   return items;
 }
 
-async function fetchAllItemsForBoard(boardId, excludeStatus, columnIds) {
+async function fetchAllItemsForBoard(boardId, excludeStatus, columnIds, includeLastComment) {
   try {
-    return await fetchItemsPage(boardId, excludeStatus, columnIds);
+    return await fetchItemsPage(boardId, excludeStatus, columnIds, includeLastComment);
   } catch (e) {
     if (!excludeStatus) throw e;
     // The exclusion rule may not be valid for this board's particular
@@ -778,7 +857,7 @@ async function fetchAllItemsForBoard(boardId, excludeStatus, columnIds) {
     // settings_str) — fail OPEN by refetching without the filter rather than
     // letting the whole board silently come back empty (see CLAUDE.md quirk
     // #4: a query error here must never look like "this board has no items").
-    return await fetchItemsPage(boardId, null, columnIds);
+    return await fetchItemsPage(boardId, null, columnIds, includeLastComment);
   }
 }
 
@@ -1009,6 +1088,8 @@ async function loadAll() {
     const boardMeta = metaBoards.map(b => ({
       statusCol: findStatusColumn(b.columns),
       priorityCol: findPriorityColumn(b.columns),
+      labelCol: findLabelColumn(b.columns),
+      deadlineCol: findDeadlineColumn(b.columns),
       peopleCols: findPeopleColumns(b.columns)
     }));
 
@@ -1023,11 +1104,15 @@ async function loadAll() {
     // (see columnIdsFilter) instead of every column on the board.
     const itemsByBoard = await Promise.all(metaBoards.map((b, idx) => {
       if (isCheckinBoard(b)) return Promise.resolve([]);
-      const { statusCol, priorityCol, peopleCols } = boardMeta[idx];
+      const { statusCol, priorityCol, labelCol, deadlineCol, peopleCols } = boardMeta[idx];
       const indices = statusCol ? doneStatusIndices(statusCol) : [];
       const excludeStatus = indices.length ? { colId: statusCol.id, indices } : null;
-      const columnIds = [statusCol && statusCol.id, priorityCol && priorityCol.id, ...peopleCols].filter(Boolean);
-      return fetchAllItemsForBoard(b.id, excludeStatus, columnIds).catch(() => []);
+      const columnIds = [statusCol && statusCol.id, priorityCol && priorityCol.id, labelCol && labelCol.id, deadlineCol && deadlineCol.id, ...peopleCols].filter(Boolean);
+      // The Focus View board (has a Label column) shows "Xh/d ago" per task,
+      // which needs to be based on comment activity, not updated_at — see
+      // maxCreatedAt/effectiveActivityTime and CLAUDE.md quirk #1.
+      const needsCommentRecency = !!labelCol;
+      return fetchAllItemsForBoard(b.id, excludeStatus, columnIds, needsCommentRecency).catch(() => []);
     }));
 
     boardsData = metaBoards.map((b, idx) => {
@@ -1036,14 +1121,16 @@ async function loadAll() {
       // NOT the board's metadata updated_at, which can reflect structural
       // changes (views, columns) rather than real item activity.
       const latestActivity = items.length
-        ? Math.max(...items.map(it => new Date(it.updated_at).getTime()))
+        ? Math.max(...items.map(it => new Date(effectiveActivityTime(it)).getTime()))
         : 0;
-      const { statusCol, priorityCol, peopleCols } = boardMeta[idx];
+      const { statusCol, priorityCol, labelCol, deadlineCol, peopleCols } = boardMeta[idx];
       return {
         id: b.id,
         name: b.name,
         statusColId: statusCol ? statusCol.id : null,
         priorityColId: priorityCol ? priorityCol.id : null,
+        labelColId: labelCol ? labelCol.id : null,
+        deadlineColId: deadlineCol ? deadlineCol.id : null,
         peopleCols,
         isCheckin: isCheckinBoard(b),
         items,
@@ -1361,15 +1448,27 @@ function renderFast() {
 function renderPeopleSidebar() {
   const listEl = document.getElementById('people-col-list');
   const statuses = computeCheckinStatuses(); // null if no check-in board is tracked
-  const checkedInByName = {};
-  if (statuses) statuses.forEach(s => { checkedInByName[s.name] = s.checkedIn; });
+  const statusByName = {};
+  if (statuses) statuses.forEach(s => { statusByName[s.name] = s.status; });
   const afterGateHour = new Date().getHours() >= CHECKIN_HOUR_GATE;
 
-  listEl.innerHTML = peopleList.map(p => {
+  // Not currently active (never checked in today, OR already checked out)
+  // sorts to the top — this is the "who isn't working right now" review
+  // list — with people still checked in pushed below. .sort() is stable, so
+  // the existing by-task-count order (from buildPeopleList) is preserved
+  // within each of the two groups.
+  const orderedList = statuses
+    ? [...peopleList].sort((a, b) => {
+        const rank = name => (statusByName[name] === 'in' ? 1 : 0);
+        return rank(a.name) - rank(b.name);
+      })
+    : peopleList;
+
+  listEl.innerHTML = orderedList.map(p => {
     let dot = '';
     if (statuses) {
-      const checkedIn = checkedInByName[p.name];
-      const color = checkedIn ? '#00c875' : (afterGateHour ? '#df2f4a' : '#c4c4c4');
+      const status = statusByName[p.name];
+      const color = status === 'in' ? '#00c875' : (status === 'out' || afterGateHour ? '#df2f4a' : '#c4c4c4');
       dot = `<span class="dot" style="background:${color}"></span>`;
     }
     return `
@@ -1423,26 +1522,42 @@ function renderCommentFeed() {
   }).join('') || '<div class="muted" style="padding:12px;">No recent comments found.</div>';
 }
 
-// A comment posted on the check-in board today counts as "checked in" —
-// same "comments, not column edits" behavior as fetchCheckinForPerson,
-// just aggregated across the whole roster instead of one person at a time.
+// A comment posted on the check-in board today counts as activity — same
+// "comments, not column edits" behavior as fetchCheckinForPerson, just
+// aggregated across the whole roster instead of one person at a time.
 // Reuses the already-polled commentFeed (see quirk #9 in CLAUDE.md) rather
 // than firing a fresh per-person query for every person in the account.
+//
+// Status is tri-state, based on whichever of today's comments for that
+// person came LAST (people post both a check-in and a check-out comment
+// over the course of a day — see CHECKOUT_PATTERN):
+//   'in'   — latest comment today was a check-in, still marked active.
+//   'out'  — latest comment today was a check-out, back to red.
+//   'none' — no comment today at all.
 function computeCheckinStatuses() {
   const checkinBoards = boardsData.filter(b => b.isCheckin);
   if (!checkinBoards.length || !allUsersCache || !allUsersCache.length) return null;
 
   const checkinBoardNames = new Set(checkinBoards.map(b => b.name));
   const today = new Date().toDateString();
-  const checkedInNames = new Set();
+  const latestTodayByName = {};
   commentFeed.forEach(u => {
     if (!u.item || !u.item.board || !checkinBoardNames.has(u.item.board.name)) return;
     if (!u.creator) return;
     if (new Date(u.created_at).toDateString() !== today) return;
-    checkedInNames.add(u.creator.name);
+    const existing = latestTodayByName[u.creator.name];
+    if (!existing || new Date(u.created_at) > new Date(existing.created_at)) {
+      latestTodayByName[u.creator.name] = u;
+    }
   });
 
-  return allUsersCache.map(p => ({ name: p.name, checkedIn: checkedInNames.has(p.name) }));
+  return allUsersCache.map(p => {
+    const latest = latestTodayByName[p.name];
+    let status;
+    if (!latest) status = 'none';
+    else status = CHECKOUT_PATTERN.test(latest.text_body || '') ? 'out' : 'in';
+    return { name: p.name, status };
+  });
 }
 
 // Rendered into its own slot (#project-cards-slot) — see the renderFast()
@@ -1493,16 +1608,98 @@ function renderProjectCards() {
     const statusChips = chipRow(statusCounts);
     const priorityChips = b.priorityColId ? chipRow(priorityCounts) : '';
 
-    const recent = [...activeItems]
-      .sort((a, c) => new Date(c.updated_at) - new Date(a.updated_at))
-      .slice(0, 200)
-      .map(it => `
-        <li>
-          <span class="dot" style="background:${statusColor(itemColumnText(it, b.statusColId))}"></span>
+    // Same green/Pitches-yellow scheme as the Focus View split above, reused
+    // here so the per-item Label chip matches the section it's grouped into.
+    const labelChipColor = text => {
+      if (FOCUS_PITCH_PATTERN.test(text)) return '#ffcb00';
+      if (FOCUS_PROJECT_PATTERN.test(text)) return '#00c875';
+      return '#9aa0a6';
+    };
+
+    // Deadline/Label/Status/Priority shown side by side under each task, so
+    // they're visible without opening the item — only whichever of these
+    // columns a board actually has produces a chip (see findDeadlineColumn/
+    // findLabelColumn/findStatusColumn/findPriorityColumn above), so a board
+    // missing e.g. a Label column just shows fewer chips, not empty ones.
+    // skipLabel: within a Focus View group the section header (Projects/
+    // Pitches) already says which one this is — repeating "Project"/
+    // "Pitches" as a chip on every single task under it is redundant, so
+    // focusGroup below passes skipLabel: true.
+    const metaRow = (it, skipLabel) => {
+      const chips = [];
+      if (b.deadlineColId) {
+        const d = itemColumnText(it, b.deadlineColId);
+        if (d) chips.push(`<span class="meta-chip meta-chip-deadline">${escapeHtml(d)}</span>`);
+      }
+      if (b.labelColId && !skipLabel) {
+        const l = itemColumnText(it, b.labelColId);
+        if (l) chips.push(`<span class="meta-chip" style="background:${labelChipColor(l)}26;color:${labelChipColor(l)}">${escapeHtml(l)}</span>`);
+      }
+      if (b.statusColId) {
+        const s = itemColumnText(it, b.statusColId);
+        if (s) chips.push(`<span class="meta-chip" style="background:${statusColor(s)}26;color:${statusColor(s)}">${escapeHtml(s)}</span>`);
+      }
+      if (b.priorityColId) {
+        const p = itemColumnText(it, b.priorityColId);
+        if (p) chips.push(`<span class="meta-chip" style="background:${statusColor(p)}26;color:${statusColor(p)}">${escapeHtml(p)}</span>`);
+      }
+      return chips.length ? `<div class="meta-row">${chips.join('')}</div>` : '';
+    };
+
+    // Not updated in 24h+ gets flagged (see isStaleUpdate/STALE_UPDATE_MS) —
+    // a stalled task should be obvious at a glance, not something someone
+    // has to notice by reading every "Xh ago" timestamp individually.
+    const recentItemRow = (it, color, skipLabel) => `
+      <li class="task-item${isStaleUpdate(effectiveActivityTime(it)) ? ' stale' : ''}">
+        <div class="task-row">
+          <span class="dot" style="background:${color}"></span>
           <a href="${escapeHtml(it.url || '#')}" target="_blank" rel="noopener">${escapeHtml(it.name)}</a>
-          <span class="time">${timeAgo(it.updated_at)}</span>
-        </li>
-      `).join('');
+          <span class="time">${timeAgo(effectiveActivityTime(it))}</span>
+        </div>
+        ${metaRow(it, skipLabel)}
+      </li>
+    `;
+
+    const recent = [...activeItems]
+      .sort((a, c) => new Date(effectiveActivityTime(c)) - new Date(effectiveActivityTime(a)))
+      .slice(0, 200)
+      .map(it => recentItemRow(it, statusColor(itemColumnText(it, b.statusColId))))
+      .join('');
+
+    // "Focus View" split: boards with a "Label" column (see LABEL_COLUMN_PATTERN)
+    // get their task list broken into Projects (green) and Pitches (yellow)
+    // sections instead of one flat list — Follow Up/Limbo and No updates
+    // items are dropped entirely rather than folded into either section.
+    let focusHtml = '';
+    if (b.labelColId) {
+      const FOCUS_PROJECT_COLOR = '#00c875';
+      const FOCUS_PITCH_COLOR = '#ffcb00';
+      const labelOf = it => itemColumnText(it, b.labelColId) || '';
+      const visible = activeItems.filter(it => !FOCUS_HIDDEN_LABEL_PATTERN.test(labelOf(it)));
+      const projectItems = visible.filter(it => FOCUS_PROJECT_PATTERN.test(labelOf(it)));
+      const pitchItems = visible.filter(it => FOCUS_PITCH_PATTERN.test(labelOf(it)));
+
+      const focusGroup = (title, color, groupItems) => `
+        <div class="focus-group">
+          <div class="chips-row-label" style="color:${color}">${title} · ${groupItems.length}</div>
+          <ul class="recent-list focus-list" data-board-id="${b.id}::${title.toLowerCase()}">
+            ${[...groupItems]
+              .sort((a, c) => new Date(effectiveActivityTime(c)) - new Date(effectiveActivityTime(a)))
+              .slice(0, 200)
+              .map(it => recentItemRow(it, color, true))
+              .join('') || '<li class="muted">No active items</li>'}
+          </ul>
+        </div>
+      `;
+
+      focusHtml = `
+        <div class="chips-row-label">Focus View</div>
+        <div class="focus-view">
+          ${focusGroup('Projects', FOCUS_PROJECT_COLOR, projectItems)}
+          ${focusGroup('Pitches', FOCUS_PITCH_COLOR, pitchItems)}
+        </div>
+      `;
+    }
 
     return `
       <div class="card">
@@ -1510,7 +1707,7 @@ function renderProjectCards() {
         <div class="chips-row-label">Status</div>
         <div class="chips">${statusChips || '<span class="muted">No status data</span>'}</div>
         ${b.priorityColId ? `<div class="chips-row-label">Priority</div><div class="chips">${priorityChips || '<span class="muted">No priority data</span>'}</div>` : ''}
-        <ul class="recent-list" data-board-id="${b.id}">${recent || '<li class="muted">No active items</li>'}</ul>
+        ${b.labelColId ? focusHtml : `<ul class="recent-list" data-board-id="${b.id}">${recent || '<li class="muted">No active items</li>'}</ul>`}
       </div>
     `;
   }).join('');
