@@ -168,6 +168,21 @@ also documented inline as a code comment near where it's handled.
    theoretically possible for >100 comments to land between two 9-second polls. The
    real fix is webhooks (see "Next task").
 
+10. **Check-in and check-out are the same kind of comment, distinguished only by text,
+    not a column.** Confirmed against real account comments (e.g. "CHECK-OUT: 21 May
+    2026...", "Check out update: ...") — employees post a "Check In" comment in the
+    morning and a separate "Check Out" comment later on the *same* per-employee item on
+    the check-in board; monday.com has no structured field marking which is which (same
+    "comments, not columns" situation as quirk #1/#7). `computeCheckinStatuses()` looks
+    at whichever of *today's* comments for a person came last and classifies it with
+    `CHECKOUT_PATTERN` (`/check[\s-]?out/i`): if their most recent comment today is a
+    check-out, their status is `'out'` (red dot again) rather than staying green for the
+    rest of the day just because they posted a check-in-shaped comment earlier. If they
+    haven't posted anything today at all, status is `'none'` (red after
+    `CHECKIN_HOUR_GATE`, gray before). The People sidebar (`renderPeopleSidebar()`) also
+    sorts anyone not currently `'in'` to the top of the list, ahead of the normal
+    by-task-count order, so "who isn't working right now" is the first thing visible.
+
 ## Frontend state machine
 
 `public/index.html`'s JS has four screens, toggled via `display: none/block`:
@@ -220,6 +235,45 @@ a scrollable, chat-like panel — newest comment on top, full scrollback below, 
   accumulation). A genuinely instant, push-based version (monday.com webhooks + Server-
   Sent Events) was evaluated and deliberately deferred — see "Next task" below for what
   that would take.
+
+## Project cards: Focus View, per-task chips, and staleness
+
+`renderProjectCards()` renders one card per tracked non-check-in board. Several
+behaviors here generalize off column *type and title* rather than board IDs — same
+philosophy as quirk #6/#7 — so they apply automatically to whichever tracked boards
+happen to have the matching columns, not just the board they were originally built for.
+
+- **Focus View (Projects/Pitches split).** Any board with a status/color-typed column
+  titled exactly "Label" (`findLabelColumn`, `LABEL_COLUMN_PATTERN`) gets its task list
+  split into two sections instead of one flat list — **Projects** (green, `#00c875`) and
+  **Pitches** (yellow, `#ffcb00`), matched against the Label column's text via
+  `FOCUS_PROJECT_PATTERN`/`FOCUS_PITCH_PATTERN`. Items labeled "Follow Up/Limbo" or "No
+  updates" (`FOCUS_HIDDEN_LABEL_PATTERN`) are dropped entirely rather than folded into
+  either section. This currently fires on **two** boards in this account — Project
+  Manager Frizzon and Project Tracker 2026 — which both happen to have a "Label" column
+  with the same option set; this was confirmed and accepted deliberately rather than
+  hardcoded to one board id, so a third board with the same column convention would get
+  the same treatment automatically.
+- **Per-task meta chips.** Every task row shows small chips for whichever of
+  Deadline/Label/Status/Priority a board actually has (`findDeadlineColumn` matches a
+  `date`-typed column titled containing "deadline"; `findLabelColumn`/`findStatusColumn`/
+  `findPriorityColumn` as above) — a board missing one of these columns just shows fewer
+  chips, nothing breaks. Inside a Focus View group the Label chip is suppressed
+  (`skipLabel`) since the Projects/Pitches section header already says which one it is.
+- **Comment-based recency, scoped to Focus View boards.** Same root cause as quirk #1:
+  `updated_at` doesn't move when someone just comments on a task. For boards with a Label
+  column specifically (`needsCommentRecency = !!labelCol` in `loadAll()`), the item fetch
+  opts into pulling each item's own recent comments (`fetchItemsPage(...,
+  includeLastComment)` → `updates(limit: 10) { created_at }`), and
+  `effectiveActivityTime(it)` prefers the max comment time (`lastCommentAt`) over
+  `updated_at`. This is opt-in per board, not global — turning it on for every board would
+  risk quirk #4's complexity budget on huge boards like Post Production Task (1000+
+  items) for no benefit, since the Label-column boards were the only ones actually
+  showing stale-looking "recent" activity that was really just an old column edit.
+- **Stale-task highlight.** Any task whose `effectiveActivityTime` is older than 24h
+  (`isStaleUpdate`, `STALE_UPDATE_MS`) renders with a red-tinted row and a bold red
+  timestamp — on every board, not just Focus View ones (falls back to `updated_at` where
+  comment data wasn't fetched).
 
 ## Known limitations / things not yet handled
 
