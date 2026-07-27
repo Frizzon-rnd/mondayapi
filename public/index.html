@@ -4,200 +4,260 @@
 <meta charset="UTF-8">
 <title>monday.com Live Ticker</title>
 <style>
-  :root { color-scheme: light; }
+  :root {
+    color-scheme: dark;
+    --bg: #0b0e14;
+    --surface: #151a23;
+    --surface-2: #1c222d;
+    --surface-3: #232a36;
+    --border: #2a313d;
+    --border-soft: #232933;
+    --text: #e8ecf1;
+    --text-dim: #a7b0bd;
+    --text-faint: #6b7480;
+    --accent: #4c9aff;
+    --accent-dim: #2f6fd1;
+    --accent-soft: rgba(76,154,255,0.16);
+    --success: #2ecc71;
+    --danger: #f0555f;
+    --danger-soft: rgba(240,85,95,0.14);
+    --shadow-card: 0 2px 10px rgba(0,0,0,0.35);
+    --shadow-card-hover: 0 8px 24px rgba(0,0,0,0.45);
+    --shadow-pop: 0 16px 48px rgba(0,0,0,0.55);
+    --radius-lg: 14px;
+    --radius: 10px;
+    --radius-sm: 7px;
+  }
   * { box-sizing: border-box; }
   body {
     margin: 0;
+    padding-top: 3px; /* room for the accent bar below */
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: #f4f5f7;
-    color: #1a1a1a;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
   }
+  /* Thin brand accent bar anchoring the top of every screen. */
+  body::before {
+    content: '';
+    position: fixed; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--accent), #8a63ff);
+    z-index: 1000;
+  }
+  ::selection { background: var(--accent-soft); color: var(--text); }
 
   /* ---- Connect screen ---- */
   #connect-screen {
-    max-width: 420px;
+    max-width: 440px;
     margin: 12vh auto;
-    background: #fff;
-    border: 1px solid #e3e5e8;
-    border-radius: 12px;
-    padding: 28px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+    box-shadow: var(--shadow-card);
   }
-  #connect-screen h1 { font-size: 18px; margin: 0 0 6px; }
-  #connect-screen p { font-size: 13px; color: #6b7280; margin: 0 0 16px; line-height: 1.5; }
+  #connect-screen h1 { font-size: 22px; margin: 0 0 8px; color: var(--text); }
+  #connect-screen p { font-size: 14px; color: var(--text-dim); margin: 0 0 18px; line-height: 1.6; }
   #connect-screen input {
     width: 100%;
-    padding: 10px 12px;
-    font-size: 13px;
-    border: 1px solid #d0d3d8;
-    border-radius: 6px;
-    margin-bottom: 10px;
+    padding: 11px 14px;
+    font-size: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin-bottom: 12px;
+    background: var(--surface-2);
+    color: var(--text);
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  #connect-screen input:focus, #picker-search:focus, #person-search-input:focus, #token-input:focus {
+    outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
   }
   #connect-screen button, #refresh-btn {
     border: none;
-    background: #0073ea;
+    background: var(--accent);
     color: #fff;
-    border-radius: 6px;
-    padding: 10px 16px;
-    font-size: 13px;
+    border-radius: var(--radius-sm);
+    padding: 11px 18px;
+    font-size: 14px;
     font-weight: 600;
     cursor: pointer;
     width: 100%;
+    transition: background-color .15s ease, transform .1s ease;
   }
-  #connect-screen button:hover { background: #0060c2; }
-  #connect-error { color: #df2f4a; font-size: 12px; margin-top: 8px; display: none; }
-  #connect-screen .hint { font-size: 11px; color: #9aa0a6; margin-top: 12px; line-height: 1.5; }
-  #connect-screen a { color: #0073ea; }
+  #connect-screen button:hover { background: var(--accent-dim); }
+  #connect-screen button:active { transform: scale(0.98); }
+  #connect-error { color: var(--danger); font-size: 12px; margin-top: 8px; display: none; }
+  #connect-screen .hint { font-size: 12px; color: var(--text-faint); margin-top: 14px; line-height: 1.6; }
+  #connect-screen a { color: var(--accent); }
 
   /* ---- Workspace picker / Board picker screens ---- */
   #workspace-picker-screen, #picker-screen {
     display: none;
-    max-width: 640px;
+    max-width: 660px;
     margin: 6vh auto;
-    background: #fff;
-    border: 1px solid #e3e5e8;
-    border-radius: 12px;
-    padding: 28px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+    box-shadow: var(--shadow-card);
   }
-  #workspace-picker-screen h1, #picker-screen h1 { font-size: 18px; margin: 0 0 6px; }
-  #workspace-picker-screen p, #picker-screen p { font-size: 13px; color: #6b7280; margin: 0 0 14px; line-height: 1.5; }
+  #workspace-picker-screen h1, #picker-screen h1 { font-size: 21px; margin: 0 0 8px; color: var(--text); }
+  #workspace-picker-screen p, #picker-screen p { font-size: 14px; color: var(--text-dim); margin: 0 0 16px; line-height: 1.6; }
   #picker-change-workspace-btn {
-    border: none; background: none; color: #0073ea; font-size: 12px; font-weight: 600;
+    border: none; background: none; color: var(--accent); font-size: 12.5px; font-weight: 600;
     cursor: pointer; padding: 0 0 12px; text-decoration: underline;
   }
   #picker-search {
-    width: 100%; padding: 9px 12px; font-size: 13px;
-    border: 1px solid #d0d3d8; border-radius: 6px; margin-bottom: 10px;
+    width: 100%; padding: 10px 14px; font-size: 14px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 12px;
+    background: var(--surface-2); color: var(--text);
   }
-  #picker-count { font-size: 12px; color: #0073ea; margin-bottom: 8px; font-weight: 700; }
+  #picker-count { font-size: 12.5px; color: var(--accent); margin-bottom: 8px; font-weight: 700; }
   #picker-list, #workspace-picker-list {
     max-height: 360px; overflow-y: auto;
-    border: 1px solid #eef0f2; border-radius: 8px; margin-bottom: 14px;
+    border: 1px solid var(--border-soft); border-radius: var(--radius); margin-bottom: 14px;
   }
   .picker-group-label {
-    font-size: 11px; font-weight: 700; text-transform: uppercase; color: #9aa0a6;
-    padding: 8px 12px 4px; background: #fafbfc;
+    font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-faint);
+    padding: 8px 12px 4px; background: var(--surface-2);
   }
   .picker-row {
-    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
-    border-bottom: 1px solid #f5f6f7; font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+    border-bottom: 1px solid var(--border-soft); font-size: 14px; cursor: pointer;
+    transition: background-color .12s ease;
   }
-  .picker-row:hover { background: #f7f8fa; }
+  .picker-row:hover { background: var(--surface-2); }
   .picker-row.disabled { opacity: 0.4; cursor: not-allowed; }
   .picker-row input { pointer-events: none; }
   #picker-save-btn {
-    border: none; background: #0073ea; color: #fff; border-radius: 6px;
-    padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer; width: 100%;
+    border: none; background: var(--accent); color: #fff; border-radius: var(--radius-sm);
+    padding: 11px 18px; font-size: 14px; font-weight: 600; cursor: pointer; width: 100%;
+    transition: background-color .15s ease;
   }
-  #picker-save-btn:disabled { background: #c4d9f5; cursor: not-allowed; }
-  #picker-save-btn:not(:disabled):hover { background: #0060c2; }
-  #picker-error, #workspace-picker-error { color: #df2f4a; font-size: 12px; margin-bottom: 8px; }
+  #picker-save-btn:disabled { background: var(--surface-3); color: var(--text-faint); cursor: not-allowed; }
+  #picker-save-btn:not(:disabled):hover { background: var(--accent-dim); }
+  #picker-error, #workspace-picker-error { color: var(--danger); font-size: 12px; margin-bottom: 8px; }
   #picker-cancel-btn, #workspace-picker-cancel-btn {
-    border: 1px solid #d0d3d8; background: #fff; border-radius: 6px;
-    padding: 6px 12px; font-size: 12px; cursor: pointer; color: #6b7280; margin-top: 8px; width: 100%;
+    border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius-sm);
+    padding: 8px 12px; font-size: 12.5px; cursor: pointer; color: var(--text-dim); margin-top: 8px; width: 100%;
+    transition: background-color .12s ease;
   }
+  #picker-cancel-btn:hover, #workspace-picker-cancel-btn:hover { background: var(--surface-3); }
   #edit-boards-btn {
-    border: 1px solid #d0d3d8; background: #fff; border-radius: 6px;
-    padding: 6px 12px; font-size: 12px; cursor: pointer; color: #333;
+    border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius-sm);
+    padding: 7px 14px; font-size: 12.5px; cursor: pointer; color: var(--text);
+    transition: background-color .12s ease, border-color .12s ease;
   }
+  #edit-boards-btn:hover { background: var(--surface-3); border-color: var(--border-soft); }
 
   /* ---- Dashboard ---- */
   #dashboard { display: none; }
 
   header {
-    padding: 14px 20px;
-    background: #fff;
-    border-bottom: 1px solid #e3e5e8;
+    padding: 16px 22px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 8px;
   }
-  header h1 { font-size: 16px; margin: 0; font-weight: 700; }
-  header .sub { font-size: 12px; color: #6b7280; }
-  #refresh-btn { width: auto; padding: 6px 12px; font-size: 12px; background: #fff; color: #333; border: 1px solid #d0d3d8; }
-  #refresh-btn:hover { background: #f0f1f3; }
-  #disconnect-btn {
-    border: 1px solid #d0d3d8; background: #fff; border-radius: 6px;
-    padding: 6px 12px; font-size: 12px; cursor: pointer; color: #6b7280;
+  header h1 { font-size: 19px; margin: 0; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+  header .sub { font-size: 12.5px; color: var(--text-dim); }
+  #refresh-btn {
+    width: auto; padding: 7px 14px; font-size: 12.5px;
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
   }
+  #refresh-btn:hover { background: var(--surface-3); }
+  #disconnect-btn {
+    border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius-sm);
+    padding: 7px 14px; font-size: 12.5px; cursor: pointer; color: var(--text-dim);
+    transition: background-color .12s ease;
+  }
+  #disconnect-btn:hover { background: var(--surface-3); }
 
-  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
   .badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
-  .time { color: #9aa; font-size: 11px; }
+  .time { color: var(--text-faint); font-size: 12px; }
 
-  .dashboard-body { display: flex; align-items: flex-start; gap: 14px; padding: 0 20px 24px; }
+  .dashboard-body { display: flex; align-items: flex-start; gap: 16px; padding: 4px 22px 24px; }
   .main-col { flex: 1; min-width: 0; }
 
   /* ---- Live comment feed sidebar ---- */
   #comment-feed-col {
-    width: 340px;
+    width: 360px;
     flex-shrink: 0;
-    background: #fff;
-    border-radius: 10px;
-    border: 1px solid #e3e5e8;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-card);
     position: sticky;
-    top: 14px;
-    max-height: calc(100vh - 28px);
+    top: 17px;
+    max-height: calc(100vh - 34px);
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
   #comment-feed-header {
-    padding: 12px 14px;
-    border-bottom: 1px solid #e3e5e8;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     gap: 8px;
-    color: #1a1a1a;
-    font-size: 13px;
+    color: var(--text);
+    font-size: 14px;
     font-weight: 700;
   }
   #comment-feed-header .live-dot {
-    width: 8px; height: 8px; border-radius: 50%; background: #00c875;
+    width: 8px; height: 8px; border-radius: 50%; background: var(--success);
     animation: cf-pulse 1.6s ease-in-out infinite;
+    box-shadow: 0 0 6px var(--success);
   }
   @keyframes cf-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-  #comment-feed-list { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 10px; }
+  @keyframes rowIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  #comment-feed-list { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 12px; }
   .cf-day-divider {
-    font-size: 10px; font-weight: 700; text-transform: uppercase; color: #9aa0a6;
-    padding: 10px 4px 4px; letter-spacing: 0.03em;
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; color: var(--text-faint);
+    padding: 10px 4px 4px; letter-spacing: 0.04em;
   }
   .cf-day-divider:first-child { padding-top: 4px; }
-  .comment-row { padding: 8px 4px; border-bottom: 1px solid #f0f1f3; color: #1a1a1a; }
+  .comment-row { padding: 9px 4px; border-bottom: 1px solid var(--border-soft); color: var(--text); }
   .comment-row:last-child { border-bottom: none; }
-  .comment-row .cf-meta { display: flex; align-items: baseline; gap: 6px; margin-bottom: 2px; }
-  .comment-row .cf-author { font-size: 12px; font-weight: 700; }
-  .comment-row .cf-board { font-size: 11px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .comment-row .cf-time { margin-left: auto; font-size: 11px; color: #9aa0a6; flex-shrink: 0; }
-  .comment-row .cf-item { font-size: 11px; color: #6b7280; margin-bottom: 3px; }
-  .comment-row .cf-snippet { font-size: 12px; line-height: 1.4; white-space: pre-line; color: #333; }
+  /* Only genuinely new comments (see lastRenderedCommentIds in
+     renderCommentFeed) get this class, so the feed doesn't visually
+     "flash" its entire contents on every 9s poll — just what's actually new. */
+  .comment-row.cf-new { animation: rowIn .3s ease; }
+  .comment-row .cf-meta { display: flex; align-items: baseline; gap: 6px; margin-bottom: 3px; }
+  .comment-row .cf-author { font-size: 13px; font-weight: 700; }
+  .comment-row .cf-board { font-size: 11.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .comment-row .cf-time { margin-left: auto; font-size: 11.5px; color: var(--text-faint); flex-shrink: 0; }
+  .comment-row .cf-item { font-size: 11.5px; color: var(--text-dim); margin-bottom: 3px; }
+  .comment-row .cf-snippet { font-size: 13px; line-height: 1.45; white-space: pre-line; color: var(--text-dim); }
 
   /* ---- People sidebar (left) ---- */
   #people-col {
-    width: 200px;
+    width: 220px;
     flex-shrink: 0;
-    background: #fff;
-    border-radius: 10px;
-    border: 1px solid #e3e5e8;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-card);
     position: sticky;
-    top: 14px;
-    max-height: calc(100vh - 28px);
+    top: 17px;
+    max-height: calc(100vh - 34px);
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
   #people-col-header {
-    padding: 12px 14px;
-    border-bottom: 1px solid #e3e5e8;
-    font-size: 11px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11.5px;
     font-weight: 700;
     text-transform: uppercase;
-    color: #9aa0a6;
+    letter-spacing: 0.04em;
+    color: var(--text-faint);
   }
   #people-col-list {
     flex: 1;
@@ -206,147 +266,195 @@
                        of scrolling — the actual cause of the sidebar overflowing
                        past the viewport with a full user roster. */
     overflow-y: auto;
-    padding: 6px;
+    padding: 7px;
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;
   }
-  #people-col-list:hover { scrollbar-color: #d0d3d8 transparent; }
+  #people-col-list:hover { scrollbar-color: var(--border-soft) transparent; }
   #people-col-list::-webkit-scrollbar { width: 6px; }
   #people-col-list::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
-  #people-col-list:hover::-webkit-scrollbar-thumb { background: #d0d3d8; }
+  #people-col-list:hover::-webkit-scrollbar-thumb { background: var(--border-soft); }
   .person-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 7px 8px;
-    border-radius: 6px;
+    gap: 9px;
+    padding: 8px 9px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
-    color: #333;
+    color: var(--text-dim);
+    transition: background-color .12s ease;
   }
-  .person-row:hover { background: #f7f8fa; }
-  .person-row.active { background: #eaf2fd; color: #0073ea; }
+  .person-row:hover { background: var(--surface-2); }
+  .person-row.active { background: var(--accent-soft); color: var(--accent); }
   .person-row .prow-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .person-row .prow-count { font-size: 11px; color: #9aa0a6; font-weight: 500; }
+  .person-row .prow-count { font-size: 11.5px; color: var(--text-faint); font-weight: 500; }
+
+  /* ---- Person filter bar (above project cards) ----
+     Search-and-select a person; once selected, renderProjectCards() filters
+     every card down to just that person's tasks (see personFilter). Typing
+     alone doesn't filter anything yet — only picking a suggestion (or the
+     one exact match via Enter) does, so partial typing doesn't flicker the
+     cards on every keystroke. */
+  #person-filter-bar { margin-bottom: 14px; }
+  #person-search-wrap { position: relative; max-width: 340px; }
+  #person-search-input {
+    width: 100%; padding: 10px 34px 10px 14px; font-size: 14px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+    color: var(--text); transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+  }
+  #person-search-input.filtering { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; color: var(--accent); }
+  #person-search-clear {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    border: none; background: none; color: var(--text-faint); font-size: 19px; line-height: 1;
+    cursor: pointer; padding: 4px 6px;
+  }
+  #person-search-clear:hover { color: var(--text); }
+  #person-search-suggestions {
+    display: none;
+    position: absolute; top: 100%; left: 0; right: 0; margin-top: 6px;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow-pop); max-height: 260px; overflow-y: auto;
+    z-index: 20;
+  }
+  .person-suggestion-row {
+    padding: 9px 13px; font-size: 14px; cursor: pointer; color: var(--text);
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    transition: background-color .1s ease;
+  }
+  .person-suggestion-row:hover { background: var(--surface-3); }
+  .person-suggestion-row .psr-count { font-size: 11.5px; color: var(--text-faint); }
 
   /* ---- Person popup ---- */
   #person-popup-overlay {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.4);
+    background: rgba(3,5,9,0.65);
     z-index: 1000;
     align-items: center;
     justify-content: center;
   }
   #person-popup-overlay.open { display: flex; }
   #person-popup {
-    background: #fff;
-    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     width: 90%;
-    max-width: 480px;
+    max-width: 500px;
     max-height: 80vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+    box-shadow: var(--shadow-pop);
+    animation: rowIn .18s ease;
   }
   #person-popup-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 16px;
-    border-bottom: 1px solid #e3e5e8;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
   }
-  #person-popup-title { font-size: 15px; font-weight: 700; }
+  #person-popup-title { font-size: 17px; font-weight: 700; color: var(--text); }
   #person-popup-close {
-    border: none; background: none; font-size: 20px; line-height: 1; cursor: pointer; color: #9aa0a6; padding: 0 4px;
+    border: none; background: none; font-size: 20px; line-height: 1; cursor: pointer; color: var(--text-faint); padding: 0 4px;
   }
-  #person-popup-close:hover { color: #333; }
+  #person-popup-close:hover { color: var(--text); }
   #person-popup-body {
-    padding: 14px 16px;
+    padding: 16px 18px;
     overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;
   }
-  #person-popup-body:hover { scrollbar-color: #d0d3d8 transparent; }
+  #person-popup-body:hover { scrollbar-color: var(--border-soft) transparent; }
   #person-popup-body::-webkit-scrollbar { width: 6px; }
   #person-popup-body::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
-  #person-popup-body:hover::-webkit-scrollbar-thumb { background: #d0d3d8; }
-  .popup-section { margin-bottom: 16px; }
+  #person-popup-body:hover::-webkit-scrollbar-thumb { background: var(--border-soft); }
+  .popup-section { margin-bottom: 18px; }
   .popup-section:last-child { margin-bottom: 0; }
-  .popup-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #9aa0a6; margin-bottom: 6px; }
-  .popup-board-group { margin-bottom: 10px; }
+  .popup-section-title { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); margin-bottom: 8px; }
+  .popup-board-group { margin-bottom: 12px; }
   .popup-board-group:last-child { margin-bottom: 0; }
-  .popup-board-name { font-size: 12px; font-weight: 700; color: #333; margin-bottom: 4px; }
+  .popup-board-name { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 5px; }
   .checkin-meta { display: flex; gap: 8px; align-items: center; margin-bottom: 2px; }
-  .checkin-snippet { color: #5c5230; font-size: 12px; line-height: 1.4; padding-left: 16px; white-space: pre-line; }
+  .checkin-snippet { color: var(--text-dim); font-size: 13px; line-height: 1.5; padding-left: 16px; white-space: pre-line; }
   .checkin-list { list-style: none; margin: 0; padding: 0; }
-  .checkin-list li { font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f0f1f3; }
+  .checkin-list li { font-size: 13px; padding: 7px 0; border-bottom: 1px solid var(--border-soft); }
   .checkin-list li:last-child { border-bottom: none; }
 
   /* ---- Refresh status: compact header text + full-width progress bars ---- */
-  #refresh-status-text { font-size: 11px; color: #9aa0a6; white-space: nowrap; }
+  #refresh-status-text { font-size: 11.5px; color: var(--text-faint); white-space: nowrap; }
   #refresh-bars { display: flex; flex-direction: column; gap: 1px; }
-  .refresh-bar-track { height: 2px; background: #eef0f2; overflow: hidden; }
+  .refresh-bar-track { height: 2px; background: var(--border-soft); overflow: hidden; }
   .refresh-bar-fill {
-    height: 100%; width: 0%; background: #0073ea;
+    height: 100%; width: 0%; background: var(--accent);
     transition: width 1s linear;
   }
-  .refresh-bar-track.comments .refresh-bar-fill { background: #00c875; }
+  .refresh-bar-track.comments .refresh-bar-fill { background: var(--success); }
 
-  #status-line { padding: 0; font-size: 12px; color: #6b7280; }
+  #status-line { padding: 0; font-size: 12.5px; color: var(--text-dim); }
   #boards-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 14px;
-    padding: 14px 20px 24px;
+    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+    gap: 16px;
+    padding: 14px 22px 26px;
   }
   #project-cards-slot { display: contents; }
-  .card { background: #fff; border: 1px solid #e3e5e8; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
-  .card-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
-  .count-total { font-size: 11px; font-weight: 500; color: #6b7280; }
-  .chips-row-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #9aa0a6; margin: 6px 0 4px; }
-  .chips-row-label:first-child { margin-top: 0; }
-  /* Small text chips, capped to the top statuses by count (+N more instead
-     of listing every distinct status) and forced to one line — this is what
-     keeps card height fixed regardless of how many statuses a board has,
-     while still showing readable labels instead of color-only bars/dots. */
-  .chips { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; overflow: hidden; white-space: nowrap; }
-  .chips:last-of-type { margin-bottom: 10px; }
-  .count-chip { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 10px; flex-shrink: 0; }
-  .count-chip.more-chip { background: #f0f1f3 !important; color: #6b7280 !important; }
-  .recent-list {
-    list-style: none; margin: 0; padding: 0; border-top: 1px solid #f0f1f3;
-    max-height: 260px; overflow-y: auto; scroll-behavior: smooth;
+  @keyframes cardIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--border-soft); /* color set inline per card — see accentColor in renderProjectCards */
+    border-radius: var(--radius-lg);
+    padding: 16px 18px;
+    box-shadow: var(--shadow-card);
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+    animation: cardIn .3s ease;
   }
-  .recent-list li { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid #f5f6f7; font-size: 12px; }
+  .card:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); }
+  .card-title { font-size: 16.5px; font-weight: 700; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: baseline; color: var(--text); gap: 8px; }
+  .card-title > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .count-total { font-size: 12px; font-weight: 500; color: var(--text-faint); flex-shrink: 0; }
+  .chips-row-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); margin: 8px 0 5px; }
+  .chips-row-label:first-child { margin-top: 0; }
+  /* Every distinct status/priority shows as its own chip — no cap, no
+     hidden "+N more" — the row wraps onto additional lines instead of
+     growing the card wider or clipping/overlapping neighboring cards. */
+  .chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .chips:last-of-type { margin-bottom: 12px; }
+  .count-chip { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 10px; flex-shrink: 0; }
+  .recent-list {
+    list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border-soft);
+    max-height: 270px; overflow-y: auto; scroll-behavior: smooth;
+  }
+  .recent-list li { display: flex; align-items: center; gap: 7px; padding: 7px 0; border-bottom: 1px solid var(--border-soft); font-size: 13px; }
   .recent-list li:last-child { border-bottom: none; }
-  .recent-list a { color: #1a1a1a; text-decoration: none; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .recent-list a:hover { text-decoration: underline; }
-  .muted { color: #9aa0a6; }
-  .card-error { color: #df2f4a; font-size: 12px; }
+  .recent-list a { color: var(--text); text-decoration: none; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color .12s ease; }
+  .recent-list a:hover { color: var(--accent); text-decoration: underline; }
+  .muted { color: var(--text-faint); }
+  .card-error { color: var(--danger); font-size: 12.5px; }
 
   /* ---- Focus View (Projects/Pitches split, see LABEL_COLUMN_PATTERN) ---- */
-  .focus-view { display: flex; flex-direction: column; gap: 10px; }
-  .focus-group .chips-row-label { margin: 0 0 4px; }
-  .focus-list { max-height: 150px; }
+  .focus-view { display: flex; flex-direction: column; gap: 12px; }
+  .focus-group .chips-row-label { margin: 0 0 5px; }
+  .focus-list { max-height: 160px; }
 
   /* ---- Per-task meta row (deadline/label/status/priority side by side) ----
      Overrides the base .recent-list li flex layout (used unmodified by the
      person popup, which stays a single flex row) only for rows that also
      carry a meta chip line underneath the task itself. */
   .recent-list li.task-item { display: block; }
-  .task-row { display: flex; align-items: center; gap: 6px; }
-  .task-row a { color: #1a1a1a; text-decoration: none; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .task-row a:hover { text-decoration: underline; }
-  .meta-row { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 0 14px; }
-  .meta-chip { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 8px; background: #f0f1f3; color: #6b7280; white-space: nowrap; }
-  .meta-chip-deadline { background: #eef2ff; color: #4338ca; }
+  .task-row { display: flex; align-items: center; gap: 7px; }
+  .task-row a { color: var(--text); text-decoration: none; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color .12s ease; }
+  .task-row a:hover { color: var(--accent); text-decoration: underline; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 5px; margin: 5px 0 0 15px; }
+  .meta-chip { font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 8px; background: var(--surface-3); color: var(--text-dim); white-space: nowrap; }
+  .meta-chip-deadline { background: rgba(124,92,255,0.16); color: #b9a6ff; }
   /* Not updated in 24h+ — surfaced per CEO ask so a stalled task is obvious
      at a glance instead of requiring someone to read every timestamp. */
-  .recent-list li.task-item.stale { background: rgba(223,47,74,0.06); border-radius: 6px; }
-  .recent-list li.task-item.stale .time { color: #df2f4a; font-weight: 700; }
+  .recent-list li.task-item.stale { background: var(--danger-soft); border-radius: var(--radius-sm); }
+  .recent-list li.task-item.stale .time { color: var(--danger); font-weight: 700; }
 
   /* ---- Auto-hide scrollbars ----
      Applies to the scrollable regions (comment feed, project card task
@@ -358,7 +466,7 @@
     scrollbar-color: transparent transparent;
   }
   #comment-feed-list:hover, .recent-list:hover {
-    scrollbar-color: #d0d3d8 transparent;
+    scrollbar-color: var(--border-soft) transparent;
   }
   #comment-feed-list::-webkit-scrollbar, .recent-list::-webkit-scrollbar {
     width: 6px;
@@ -368,7 +476,7 @@
     border-radius: 3px;
   }
   #comment-feed-list:hover::-webkit-scrollbar-thumb, .recent-list:hover::-webkit-scrollbar-thumb {
-    background: #d0d3d8;
+    background: var(--border-soft);
   }
 </style>
 </head>
@@ -430,6 +538,13 @@
       </div>
 
       <div class="main-col">
+        <div id="person-filter-bar">
+          <div id="person-search-wrap">
+            <input type="text" id="person-search-input" placeholder="Search a person to filter their tasks…" autocomplete="off">
+            <button id="person-search-clear" title="Clear filter" style="display:none;">&times;</button>
+            <div id="person-search-suggestions"></div>
+          </div>
+        </div>
         <div id="boards-grid">
           <div id="project-cards-slot"></div>
         </div>
@@ -504,6 +619,11 @@ let pickerSelection = new Set(); // in-progress selection while the picker is op
 let boardsData = [];   // [{id,name,columns,items:[...]}]
 let peopleList = [];   // [{name, count}]
 let selectedPerson = null;
+// Name of the person the project cards are filtered to, or null to show
+// everyone's tasks (the default/unfiltered view) — set via the search box
+// above the cards, distinct from selectedPerson (which just tracks the
+// popup opened from the People sidebar).
+let personFilter = null;
 let personDataCache = {}; // { personName: { boardId: [items...] } }
 let checkinCache = {};    // { personName: [{boardName, updates:[{id,text_body,created_at,creator}]}] }
 let recentUpdates = [];  // latest account-wide comments snapshot, refreshed on every feed poll
@@ -921,7 +1041,6 @@ function showDashboard() {
   autoScrollTimer = setInterval(autoScrollTick, AUTO_SCROLL_TICK_MS);
   if (refreshStatusTimer) clearInterval(refreshStatusTimer);
   refreshStatusTimer = setInterval(renderRefreshStatus, 1000);
-  wirePeopleAutoScroll(); // idempotent — guarded internally, safe if showDashboard() runs more than once
 }
 
 // ---- Workspace picker ----
@@ -1428,6 +1547,58 @@ function buildPeopleList() {
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
+// Person-search bar above the project cards (distinct from the People
+// sidebar's click-to-popup behavior). Typing alone only shows suggestions —
+// filtering the actual cards (personFilter) only happens once a name is
+// picked (click, or Enter against a single exact match), so partial typing
+// doesn't repaint every card on each keystroke. An empty term (e.g. just
+// clicking/focusing the box) shows the FULL roster as a browsable dropdown
+// instead of hiding until you start typing — the box already scrolls
+// (max-height in CSS), so there's no cap needed there. Typing narrows it
+// down to the top 8 matches, same as before.
+function renderPersonSearchSuggestions(term) {
+  const box = document.getElementById('person-search-suggestions');
+  const q = term.trim().toLowerCase();
+  const matches = q
+    ? peopleList.filter(p => p.name.toLowerCase().includes(q)).slice(0, 8)
+    : peopleList;
+
+  if (!matches.length) {
+    box.innerHTML = '<div class="person-suggestion-row muted">No matching person</div>';
+  } else {
+    box.innerHTML = matches.map(p => `
+      <div class="person-suggestion-row" data-name="${escapeHtml(p.name)}">
+        <span>${escapeHtml(p.name)}</span>
+        ${p.count ? `<span class="psr-count">${p.count}</span>` : ''}
+      </div>
+    `).join('');
+    box.querySelectorAll('.person-suggestion-row[data-name]').forEach(el => {
+      el.addEventListener('click', () => selectPersonFilter(el.getAttribute('data-name')));
+    });
+  }
+  box.style.display = 'block';
+}
+
+function selectPersonFilter(name) {
+  personFilter = name;
+  const input = document.getElementById('person-search-input');
+  input.value = name;
+  input.classList.add('filtering');
+  document.getElementById('person-search-clear').style.display = '';
+  document.getElementById('person-search-suggestions').style.display = 'none';
+  renderProjectCards();
+}
+
+function clearPersonFilter() {
+  personFilter = null;
+  const input = document.getElementById('person-search-input');
+  input.value = '';
+  input.classList.remove('filtering');
+  document.getElementById('person-search-clear').style.display = 'none';
+  document.getElementById('person-search-suggestions').style.display = 'none';
+  renderProjectCards();
+}
+
 function render() {
   renderPeopleSidebar();
   renderFast();
@@ -1494,8 +1665,16 @@ function dayLabel(iso) {
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+// Tracks which comment ids were on screen after the LAST render, so
+// renderCommentFeed can flag only genuinely new rows with the cf-new
+// animation class — commentFeed itself only ever grows (quirk #9), so
+// without this every single row would replay the fade-in on every 9s poll,
+// which would look like the whole feed flashing rather than a live update.
+let lastRenderedCommentIds = new Set();
+
 function renderCommentFeed() {
   const listEl = document.getElementById('comment-feed-list');
+  const previouslyRendered = lastRenderedCommentIds;
   // Newest first, already-sorted by mergeIntoCommentFeed. Always shows every
   // tracked-board comment — the person popup is a separate, non-filtering view.
   let lastDay = null;
@@ -1507,9 +1686,10 @@ function renderCommentFeed() {
     const day = dayLabel(u.created_at);
     const divider = day !== lastDay ? `<div class="cf-day-divider">${escapeHtml(day)}</div>` : '';
     lastDay = day;
+    const isNew = previouslyRendered.size > 0 && !previouslyRendered.has(u.id);
     return `
       ${divider}
-      <div class="comment-row">
+      <div class="comment-row${isNew ? ' cf-new' : ''}">
         <div class="cf-meta">
           <span class="dot" style="background:#00c875"></span>
           <span class="cf-author">${escapeHtml(author)}</span>
@@ -1520,6 +1700,8 @@ function renderCommentFeed() {
       </div>
     `;
   }).join('') || '<div class="muted" style="padding:12px;">No recent comments found.</div>';
+
+  lastRenderedCommentIds = new Set(commentFeed.map(u => u.id));
 }
 
 // A comment posted on the check-in board today counts as activity — same
@@ -1563,12 +1745,17 @@ function computeCheckinStatuses() {
 // Rendered into its own slot (#project-cards-slot) — see the renderFast()
 // comment above. Only loadAll() calls this, which is what lets the
 // auto-scroll cycling below run smoothly instead of resetting every few
-// seconds. Always shows every board's full item set — the person popup is a
-// separate, non-filtering view (see openPersonPopup).
+// seconds. Shows every board's full item set UNLESS personFilter is set (via
+// the search box above the cards), in which case every card narrows down to
+// just that person's tasks — see itemPeople(). This is separate from the
+// person popup (openPersonPopup), which is an additional detail view, not
+// this filter.
 function renderProjectCards() {
   const slot = document.getElementById('project-cards-slot');
   const cardsHtml = projectBoards().map(b => {
-    const items = b.items;
+    const items = personFilter
+      ? b.items.filter(it => itemPeople(it, b.peopleCols).includes(personFilter))
+      : b.items;
 
     // Done/completed/closed items are excluded from the visible list (this
     // is a "what's not done yet" big-screen dashboard) — the status/priority
@@ -1591,22 +1778,26 @@ function renderProjectCards() {
       }
     });
 
-    // Capped to the top 3 statuses by count (+N more folded into one chip)
-    // so the row stays one line regardless of how many distinct statuses a
-    // board has, instead of wrapping and inflating card height.
-    const CHIP_CAP = 3;
+    // Every distinct status/priority gets its own chip — no cap, nothing
+    // hidden behind a "+N more" that then has to overlap or clip into
+    // neighboring cards to be readable. The row just wraps (see .chips).
     const chipRow = counts => {
       const entries = Object.entries(counts).sort((a, c) => c[1] - a[1]);
-      const shown = entries.slice(0, CHIP_CAP).map(([label, count]) => `
+      return entries.map(([label, count]) => `
         <span class="count-chip" style="background:${statusColor(label)}26;color:${statusColor(label)}">${escapeHtml(label)} · ${count}</span>
       `).join('');
-      const restCount = entries.slice(CHIP_CAP).reduce((sum, [, c]) => sum + c, 0);
-      const more = restCount > 0 ? `<span class="count-chip more-chip">+${restCount} more</span>` : '';
-      return shown + more;
     };
 
     const statusChips = chipRow(statusCounts);
     const priorityChips = b.priorityColId ? chipRow(priorityCounts) : '';
+
+    // Left-edge accent color, so a whole grid of cards can be read at a
+    // glance instead of having to open/read each one individually: red if
+    // this board has any stale (24h+) task, otherwise the color of its
+    // single most common status.
+    const topStatusEntry = Object.entries(statusCounts).sort((a, c) => c[1] - a[1])[0];
+    const hasStaleTask = activeItems.some(it => isStaleUpdate(effectiveActivityTime(it)));
+    const accentColor = hasStaleTask ? '#f0555f' : (topStatusEntry ? statusColor(topStatusEntry[0]) : '#2a313d');
 
     // Same green/Pitches-yellow scheme as the Focus View split above, reused
     // here so the per-item Label chip matches the section it's grouped into.
@@ -1702,7 +1893,7 @@ function renderProjectCards() {
     }
 
     return `
-      <div class="card">
+      <div class="card" style="border-left-color:${accentColor}">
         <div class="card-title"><span>${escapeHtml(b.name)}</span><span class="count-total">${activeItems.length} active / ${items.length} total</span></div>
         <div class="chips-row-label">Status</div>
         <div class="chips">${statusChips || '<span class="muted">No status data</span>'}</div>
@@ -1717,16 +1908,16 @@ function renderProjectCards() {
 }
 
 // Auto-scroll ("both scrollable and auto-cycling", per product decision):
-// a tick every AUTO_SCROLL_TICK_MS nudges each card's task list (and the
-// people sidebar) forward so a long list cycles into view on its own,
-// wrapping to the top at the bottom. Backs off for AUTO_SCROLL_RESUME_DELAY_MS
-// after any manual wheel/touch interaction (tracked per list id in
-// lastManualScrollAt) or while the pointer is hovering the list, so it never
-// fights a user actively scrolling — this is a passive kiosk display most of
-// the time, so lists shouldn't just sit there requiring a manual scroll to
-// ever be seen in full.
-const PEOPLE_SCROLL_KEY = '__people__';
-
+// a tick every AUTO_SCROLL_TICK_MS nudges each card's task list forward so a
+// long list cycles into view on its own, wrapping to the top at the bottom.
+// Backs off for AUTO_SCROLL_RESUME_DELAY_MS after any manual wheel/touch
+// interaction (tracked per list id in lastManualScrollAt) or while the
+// pointer is hovering the list, so it never fights a user actively
+// scrolling — this is a passive kiosk display most of the time, so lists
+// shouldn't just sit there requiring a manual scroll to ever be seen in
+// full. Deliberately excludes the People sidebar (#people-col-list) — that
+// list should stay still so the check-in/checkout status is easy to review,
+// not auto-cycle out of view.
 function wireAutoScrollLists() {
   document.querySelectorAll('#project-cards-slot .recent-list[data-board-id]').forEach(el => {
     const id = el.getAttribute('data-board-id');
@@ -1734,21 +1925,6 @@ function wireAutoScrollLists() {
     el.addEventListener('wheel', markManual, { passive: true });
     el.addEventListener('touchmove', markManual, { passive: true });
   });
-}
-
-// The people sidebar list element is created once in the static HTML and
-// only ever has its innerHTML replaced (see renderPeopleSidebar), so its
-// scroll listeners only need wiring once — unlike the per-board lists above,
-// which get recreated on every loadAll() and are rewired via wireAutoScrollLists.
-let peopleAutoScrollWired = false;
-function wirePeopleAutoScroll() {
-  if (peopleAutoScrollWired) return; // showDashboard() can run more than once (e.g. after editing boards)
-  const el = document.getElementById('people-col-list');
-  if (!el) return;
-  const markManual = () => { lastManualScrollAt[PEOPLE_SCROLL_KEY] = Date.now(); };
-  el.addEventListener('wheel', markManual, { passive: true });
-  el.addEventListener('touchmove', markManual, { passive: true });
-  peopleAutoScrollWired = true;
 }
 
 function autoScrollStep(el, id, now) {
@@ -1765,8 +1941,6 @@ function autoScrollTick() {
   document.querySelectorAll('#project-cards-slot .recent-list[data-board-id]').forEach(el => {
     autoScrollStep(el, el.getAttribute('data-board-id'), now);
   });
-  const peopleEl = document.getElementById('people-col-list');
-  if (peopleEl) autoScrollStep(peopleEl, PEOPLE_SCROLL_KEY, now);
 }
 
 document.getElementById('connect-btn').addEventListener('click', connect);
@@ -1791,6 +1965,38 @@ document.getElementById('workspace-picker-cancel-btn').addEventListener('click',
 document.getElementById('person-popup-close').addEventListener('click', closePersonPopup);
 document.getElementById('person-popup-overlay').addEventListener('click', e => {
   if (e.target.id === 'person-popup-overlay') closePersonPopup(); // backdrop click, not the popup itself
+});
+
+const personSearchInput = document.getElementById('person-search-input');
+// Clicking/tabbing into the box opens the full roster as a browsable
+// dropdown, not just once you start typing — same list renderPersonSearch-
+// Suggestions already produces for an empty term.
+personSearchInput.addEventListener('focus', () => renderPersonSearchSuggestions(personSearchInput.value));
+personSearchInput.addEventListener('input', e => {
+  // Typing again after a filter was already selected starts a fresh search
+  // rather than silently keeping the old filter applied underneath.
+  if (personFilter) {
+    personFilter = null;
+    personSearchInput.classList.remove('filtering');
+    document.getElementById('person-search-clear').style.display = 'none';
+    renderProjectCards();
+  }
+  renderPersonSearchSuggestions(e.target.value);
+});
+personSearchInput.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const term = e.target.value.trim().toLowerCase();
+  if (!term) return;
+  const matches = peopleList.filter(p => p.name.toLowerCase().includes(term));
+  if (matches.length === 1) selectPersonFilter(matches[0].name);
+});
+document.getElementById('person-search-clear').addEventListener('click', clearPersonFilter);
+// Clicking anywhere outside the search box dismisses the suggestion
+// dropdown without needing to pick a name or hit Escape.
+document.addEventListener('click', e => {
+  if (!e.target.closest('#person-search-wrap')) {
+    document.getElementById('person-search-suggestions').style.display = 'none';
+  }
 });
 
 // Auto-connect if a token is already in this tab's session
