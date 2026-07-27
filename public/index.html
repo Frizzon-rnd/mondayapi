@@ -143,12 +143,12 @@
     transition: background-color .12s ease;
   }
   #picker-cancel-btn:hover, #workspace-picker-cancel-btn:hover { background: var(--surface-3); }
-  #edit-boards-btn {
+  #edit-boards-btn, #reset-layout-btn {
     border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius-sm);
     padding: 7px 14px; font-size: 12.5px; cursor: pointer; color: var(--text);
     transition: background-color .12s ease, border-color .12s ease;
   }
-  #edit-boards-btn:hover { background: var(--surface-3); border-color: var(--border-soft); }
+  #edit-boards-btn:hover, #reset-layout-btn:hover { background: var(--surface-3); border-color: var(--border-soft); }
 
   /* ---- Dashboard ---- */
   #dashboard { display: none; }
@@ -181,13 +181,46 @@
   .badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
   .time { color: var(--text-faint); font-size: 12px; }
 
-  .dashboard-body { display: flex; align-items: flex-start; gap: 16px; padding: 4px 22px 24px; }
-  .main-col { flex: 1; min-width: 0; }
-
-  /* ---- Live comment feed sidebar ---- */
-  #comment-feed-col {
-    width: 360px;
+  /* The three top-level panels (People, Boards, Live comments) are all
+     equally reorderable (drag the .panel-drag-handle in each header) and
+     resizable (native corner resize: both, same ResizeObserver-persisted
+     approach as .card — see wireDashboardPanelLayout). flex-wrap so a panel
+     resized very wide doesn't force the others off-screen. */
+  .dashboard-body { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; padding: 4px 22px 24px; }
+  .dash-panel-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 700;
     flex-shrink: 0;
+  }
+  .panel-drag-handle, .card-drag-handle {
+    cursor: grab; color: var(--text-faint); font-size: 15px; padding: 0 2px 0 0;
+    user-select: none; flex-shrink: 0; letter-spacing: -1px;
+  }
+  .panel-drag-handle:hover, .card-drag-handle:hover { color: var(--text-dim); }
+  .panel-drag-handle:active, .card-drag-handle:active { cursor: grabbing; }
+  .main-col {
+    /* flex: 0 0 auto (not e.g. "1 1 480px") deliberately — an explicit
+       flex-basis makes flexbox ignore the width property entirely for
+       sizing, which would silently defeat the resize handle below (a
+       resized inline width would just be overruled back to the flex-basis
+       on every layout pass). auto defers to width, same working pattern as
+       #people-col/#comment-feed-col/.card. */
+    flex: 0 0 auto;
+    /* Approximates the old "fill whatever's left of the row" behavior
+       (People ~220px + Live comments ~360px + gaps/padding) as a plain
+       width instead of flex-grow, so it's still a real width value that a
+       user's manual resize (which sets an inline px width) can override —
+       flex-grow would just override that inline width right back. */
+    width: calc(100vw - 660px);
+    min-width: 380px;
+    min-height: 240px;
+    max-width: 100%;
     background: var(--surface);
     border-radius: var(--radius-lg);
     border: 1px solid var(--border);
@@ -198,16 +231,37 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    resize: both;
   }
-  #comment-feed-header {
-    padding: 14px 16px;
-    border-bottom: 1px solid var(--border);
+  .main-col-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px 22px 26px;
+  }
+  /* boards-grid used to be padded for sitting directly in .dashboard-body —
+     now .main-col-body carries that padding instead, so cancel the
+     duplicate here rather than doubling the spacing. */
+  .main-col-body #boards-grid { padding: 0; }
+
+  /* ---- Live comment feed sidebar ---- */
+  #comment-feed-col {
+    width: 360px;
+    flex-shrink: 0;
+    min-width: 260px;
+    min-height: 200px;
+    max-width: 100%;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-card);
+    position: sticky;
+    top: 17px;
+    max-height: calc(100vh - 34px);
     display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--text);
-    font-size: 14px;
-    font-weight: 700;
+    flex-direction: column;
+    overflow: hidden;
+    resize: both;
   }
   #comment-feed-header .live-dot {
     width: 8px; height: 8px; border-radius: 50%; background: var(--success);
@@ -239,6 +293,9 @@
   #people-col {
     width: 220px;
     flex-shrink: 0;
+    min-width: 180px;
+    min-height: 200px;
+    max-width: 100%;
     background: var(--surface);
     border-radius: var(--radius-lg);
     border: 1px solid var(--border);
@@ -249,15 +306,20 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    resize: both;
   }
   #people-col-header {
     padding: 14px 16px;
     border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-size: 11.5px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--text-faint);
+    flex-shrink: 0;
   }
   #people-col-list {
     flex: 1;
@@ -394,9 +456,13 @@
   .refresh-bar-track.comments .refresh-bar-fill { background: var(--success); }
 
   #status-line { padding: 0; font-size: 12.5px; color: var(--text-dim); }
+  /* flex-wrap (not CSS grid) deliberately — resizing a card (see .card's
+     `resize: both` below) needs to reflow the cards after it, which a grid's
+     fixed track sizing won't do but a wrapping flex row will. */
   #boards-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
     gap: 16px;
     padding: 14px 22px 26px;
   }
@@ -411,10 +477,33 @@
     box-shadow: var(--shadow-card);
     transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
     animation: cardIn .3s ease;
+    /* Resizable via the native corner handle (resize: both), tracked by a
+       ResizeObserver that persists width/height per board — see
+       wireCardResizeObserver. Reordered by dragging the .card-drag-handle in
+       the title (NOT the whole card — the card is full of real links and
+       scrollable lists that need normal click/scroll behavior, so only a
+       dedicated handle is draggable; see wireCardDragAndDrop). flex: 0 0
+       auto so a card's own width/height (default or user-resized) is what
+       determines its box, not flex grow/shrink fighting the resize handle. */
+    flex: 0 0 auto;
+    width: 340px;
+    min-width: 280px;
+    min-height: 180px;
+    max-width: 100%;
+    overflow: auto;
+    resize: both;
   }
+  .card.dragging, [data-panel-id].dragging { opacity: 0.4; }
+  .card.drag-over, [data-panel-id].drag-over { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
   .card:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); }
-  .card-title { font-size: 16.5px; font-weight: 700; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: baseline; color: var(--text); gap: 8px; }
-  .card-title > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card-drag-handle {
+    cursor: grab; color: var(--text-faint); font-size: 15px; padding: 0 2px 0 6px;
+    user-select: none; flex-shrink: 0; letter-spacing: -1px;
+  }
+  .card-drag-handle:hover { color: var(--text-dim); }
+  .card-drag-handle:active { cursor: grabbing; }
+  .card-title { font-size: 16.5px; font-weight: 700; margin-bottom: 10px; display: flex; align-items: baseline; color: var(--text); gap: 8px; }
+  .card-title-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .count-total { font-size: 12px; font-weight: 500; color: var(--text-faint); flex-shrink: 0; }
   .chips-row-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); margin: 8px 0 5px; }
   .chips-row-label:first-child { margin-top: 0; }
@@ -521,6 +610,7 @@
         <span id="status-line">Loading…</span>
         <span id="refresh-status-text"></span>
         <button id="edit-boards-btn">Edit boards</button>
+        <button id="reset-layout-btn" title="Undo any manual resizing/reordering of cards and panels">Reset layout</button>
         <button id="refresh-btn">Refresh now</button>
         <button id="disconnect-btn">Disconnect</button>
       </div>
@@ -531,27 +621,39 @@
       <div class="refresh-bar-track comments"><div id="refresh-bar-comments" class="refresh-bar-fill"></div></div>
     </div>
 
-    <div class="dashboard-body">
-      <div id="people-col">
-        <div id="people-col-header">People</div>
+    <div class="dashboard-body" id="dashboard-body">
+      <div id="people-col" data-panel-id="people">
+        <div id="people-col-header">
+          <span class="panel-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
+          <span>People</span>
+        </div>
         <div id="people-col-list"></div>
       </div>
 
-      <div class="main-col">
-        <div id="person-filter-bar">
-          <div id="person-search-wrap">
-            <input type="text" id="person-search-input" placeholder="Search a person to filter their tasks…" autocomplete="off">
-            <button id="person-search-clear" title="Clear filter" style="display:none;">&times;</button>
-            <div id="person-search-suggestions"></div>
-          </div>
+      <div class="main-col" data-panel-id="main">
+        <div class="dash-panel-header">
+          <span class="panel-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
+          <span>Boards</span>
         </div>
-        <div id="boards-grid">
-          <div id="project-cards-slot"></div>
+        <div class="main-col-body">
+          <div id="person-filter-bar">
+            <div id="person-search-wrap">
+              <input type="text" id="person-search-input" placeholder="Search a person to filter their tasks…" autocomplete="off">
+              <button id="person-search-clear" title="Clear filter" style="display:none;">&times;</button>
+              <div id="person-search-suggestions"></div>
+            </div>
+          </div>
+          <div id="boards-grid">
+            <div id="project-cards-slot"></div>
+          </div>
         </div>
       </div>
 
-      <div id="comment-feed-col">
-        <div id="comment-feed-header"><span class="live-dot"></span> Live comments</div>
+      <div id="comment-feed-col" data-panel-id="comments">
+        <div id="comment-feed-header" class="dash-panel-header">
+          <span class="panel-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
+          <span class="live-dot"></span> Live comments
+        </div>
         <div id="comment-feed-list"></div>
       </div>
     </div>
@@ -695,11 +797,221 @@ function saveSelectedWorkspaceId(id) {
   localStorage.setItem(STORAGE_KEY_WORKSPACE, id);
 }
 
+// Per-board card size/order, user-set by dragging a card's corner (resize)
+// or its title-bar handle (reorder) — see wireCardResizeObserver and
+// wireCardDragAndDrop. Persisted so a manual refresh or the periodic
+// loadAll() doesn't reset a layout someone deliberately arranged.
+const STORAGE_KEY_CARD_ORDER = 'monday_card_order';
+const STORAGE_KEY_CARD_SIZES = 'monday_card_sizes';
+
+function loadCardOrder() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY_CARD_ORDER) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+function saveCardOrder(order) {
+  cardOrder = order;
+  localStorage.setItem(STORAGE_KEY_CARD_ORDER, JSON.stringify(order));
+}
+
+function loadCardSizes() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY_CARD_SIZES) || '{}');
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+function saveCardSizes(sizes) {
+  cardSizes = sizes;
+  localStorage.setItem(STORAGE_KEY_CARD_SIZES, JSON.stringify(sizes));
+}
+
+let cardOrder = loadCardOrder();       // [boardId, ...] — user's chosen sequence
+let cardSizes = loadCardSizes();       // { boardId: {width, height} } in px
+
+// ---- Dashboard panel layout (People / Boards / Live comments) ----
+// The three top-level panels are reorderable (drag the .panel-drag-handle in
+// each header) and resizable (native corner resize, tracked by a
+// ResizeObserver) — the same approach as the project cards above, just
+// operating on #dashboard-body's direct children instead of the cards grid.
+// Persisted separately from cardOrder/cardSizes since these are a distinct
+// set of elements that are never rebuilt via innerHTML the way cards are.
+const STORAGE_KEY_PANEL_ORDER = 'monday_panel_order';
+const STORAGE_KEY_PANEL_SIZES = 'monday_panel_sizes';
+
+function loadPanelOrder() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY_PANEL_ORDER) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+function savePanelOrder(order) {
+  panelOrder = order;
+  localStorage.setItem(STORAGE_KEY_PANEL_ORDER, JSON.stringify(order));
+}
+
+function loadPanelSizes() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY_PANEL_SIZES) || '{}');
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+function savePanelSizes(sizes) {
+  panelSizes = sizes;
+  localStorage.setItem(STORAGE_KEY_PANEL_SIZES, JSON.stringify(sizes));
+}
+
+let panelOrder = loadPanelOrder(); // [panelId, ...] e.g. ['comments','people','main']
+let panelSizes = loadPanelSizes(); // { panelId: {width, height} } in px
+
+// Physically moves the panel DOM nodes into the saved order — appendChild
+// on a node that's already in the document MOVES it (to the end of its
+// parent) rather than duplicating it, so calling this in panelOrder's
+// sequence lands every panel in the right final position.
+function applyPanelOrder() {
+  if (!panelOrder.length) return;
+  const body = document.getElementById('dashboard-body');
+  panelOrder.forEach(id => {
+    const el = body.querySelector(`[data-panel-id="${id}"]`);
+    if (el) body.appendChild(el);
+  });
+}
+
+function applyPanelSizes() {
+  document.querySelectorAll('#dashboard-body [data-panel-id]').forEach(el => {
+    const size = panelSizes[el.getAttribute('data-panel-id')];
+    if (size) {
+      el.style.width = size.width + 'px';
+      el.style.height = size.height + 'px';
+    }
+  });
+}
+
+// Drag-to-reorder for the 3 panels — same pattern as wireCardDragAndDrop
+// (only the header's .panel-drag-handle is draggable, not the whole panel,
+// so links/scrolling/the resize corner inside each panel keep working
+// normally). Guarded by dashboardPanelsWired since, unlike cards, these
+// elements are never recreated — showDashboard() can run more than once
+// (e.g. after editing boards), which would otherwise stack duplicate
+// listeners on the same static nodes every time.
+let dashboardPanelsWired = false;
+function wireDashboardPanelDragAndDrop() {
+  if (dashboardPanelsWired) return;
+  dashboardPanelsWired = true;
+
+  const body = document.getElementById('dashboard-body');
+  let draggedId = null;
+
+  body.querySelectorAll('.panel-drag-handle').forEach(handle => {
+    handle.addEventListener('dragstart', e => {
+      const panel = handle.closest('[data-panel-id]');
+      draggedId = panel.getAttribute('data-panel-id');
+      panel.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', draggedId);
+      e.dataTransfer.setDragImage(panel, 24, 24);
+    });
+    handle.addEventListener('dragend', () => {
+      body.querySelectorAll('[data-panel-id]').forEach(p => p.classList.remove('dragging', 'drag-over'));
+      draggedId = null;
+    });
+  });
+
+  body.querySelectorAll('[data-panel-id]').forEach(panel => {
+    panel.addEventListener('dragover', e => {
+      if (!draggedId) return;
+      e.preventDefault();
+      if (panel.getAttribute('data-panel-id') !== draggedId) panel.classList.add('drag-over');
+    });
+    panel.addEventListener('dragleave', () => panel.classList.remove('drag-over'));
+    panel.addEventListener('drop', e => {
+      e.preventDefault();
+      panel.classList.remove('drag-over');
+      const targetId = panel.getAttribute('data-panel-id');
+      if (!draggedId || targetId === draggedId) return;
+
+      const current = [...body.querySelectorAll('[data-panel-id]')].map(p => p.getAttribute('data-panel-id'));
+      const from = current.indexOf(draggedId);
+      if (from === -1 || current.indexOf(targetId) === -1) return;
+      current.splice(from, 1);
+      current.splice(current.indexOf(targetId), 0, draggedId);
+      savePanelOrder(current);
+      applyPanelOrder();
+    });
+  });
+}
+
+// Persists each panel's user-resized width/height, same ResizeObserver
+// approach as wireCardResizeObserver — created once (panels are static, not
+// recreated per render), so no disconnect/reconnect dance is needed here.
+let panelResizeObserver = null;
+const panelResizeSaveTimers = {};
+function wireDashboardPanelResizeObserver() {
+  if (panelResizeObserver) return;
+  panelResizeObserver = new ResizeObserver(entries => {
+    entries.forEach(entry => {
+      const panelId = entry.target.getAttribute('data-panel-id');
+      if (!panelId) return;
+      const rect = entry.target.getBoundingClientRect(); // border-box, matches box-sizing:border-box
+      clearTimeout(panelResizeSaveTimers[panelId]);
+      panelResizeSaveTimers[panelId] = setTimeout(() => {
+        const sizes = { ...panelSizes, [panelId]: { width: Math.round(rect.width), height: Math.round(rect.height) } };
+        savePanelSizes(sizes);
+      }, 400);
+    });
+  });
+  document.querySelectorAll('#dashboard-body [data-panel-id]').forEach(el => panelResizeObserver.observe(el));
+}
+
+function initDashboardPanelLayout() {
+  applyPanelOrder();
+  applyPanelSizes();
+  wireDashboardPanelDragAndDrop();
+  wireDashboardPanelResizeObserver();
+}
+
+function resetLayout() {
+  cardOrder = [];
+  cardSizes = {};
+  panelOrder = [];
+  panelSizes = {};
+  localStorage.removeItem(STORAGE_KEY_CARD_ORDER);
+  localStorage.removeItem(STORAGE_KEY_CARD_SIZES);
+  localStorage.removeItem(STORAGE_KEY_PANEL_ORDER);
+  localStorage.removeItem(STORAGE_KEY_PANEL_SIZES);
+  document.querySelectorAll('#dashboard-body [data-panel-id]').forEach(el => {
+    el.style.width = '';
+    el.style.height = '';
+  });
+  renderProjectCards();
+}
+
 // Boards used for the ticker/cards/people counts — everything except
 // check-in rosters, which get their own dedicated handling below because
 // their "activity" lives in comments, not column values.
 function projectBoards() {
   return boardsData.filter(b => !b.isCheckin);
+}
+
+// projectBoards() in the user's chosen order (cardOrder), if any — boards
+// not yet in cardOrder (new picks, or before any manual reordering) are
+// appended at the end in projectBoards()'s natural (latest-activity) order.
+function orderedProjectBoards() {
+  const boards = projectBoards();
+  if (!cardOrder.length) return boards;
+  const byId = new Map(boards.map(b => [String(b.id), b]));
+  const ordered = cardOrder.map(id => byId.get(String(id))).filter(Boolean);
+  const seen = new Set(ordered.map(b => String(b.id)));
+  boards.forEach(b => { if (!seen.has(String(b.id))) ordered.push(b); });
+  return ordered;
 }
 
 function escapeHtml(str) {
@@ -1032,6 +1344,7 @@ function showDashboard() {
   document.getElementById('workspace-picker-screen').style.display = 'none';
   document.getElementById('picker-screen').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
+  initDashboardPanelLayout();
   loadAll();
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(loadAll, BOARD_REFRESH_MS);
@@ -1752,7 +2065,7 @@ function computeCheckinStatuses() {
 // this filter.
 function renderProjectCards() {
   const slot = document.getElementById('project-cards-slot');
-  const cardsHtml = projectBoards().map(b => {
+  const cardsHtml = orderedProjectBoards().map(b => {
     const items = personFilter
       ? b.items.filter(it => itemPeople(it, b.peopleCols).includes(personFilter))
       : b.items;
@@ -1892,9 +2205,19 @@ function renderProjectCards() {
       `;
     }
 
+    // User-set size (see wireCardResizeObserver) overrides the CSS default —
+    // omitted entirely for a board that's never been resized, so it just
+    // falls back to the default 340px/auto from the .card rule.
+    const savedSize = cardSizes[String(b.id)];
+    const sizeStyle = savedSize ? `width:${savedSize.width}px;height:${savedSize.height}px;` : '';
+
     return `
-      <div class="card" style="border-left-color:${accentColor}">
-        <div class="card-title"><span>${escapeHtml(b.name)}</span><span class="count-total">${activeItems.length} active / ${items.length} total</span></div>
+      <div class="card" data-board-id="${b.id}" style="border-left-color:${accentColor};${sizeStyle}">
+        <div class="card-title">
+          <span class="card-drag-handle" draggable="true" title="Drag to reorder">⠿</span>
+          <span class="card-title-name">${escapeHtml(b.name)}</span>
+          <span class="count-total">${activeItems.length} active / ${items.length} total</span>
+        </div>
         <div class="chips-row-label">Status</div>
         <div class="chips">${statusChips || '<span class="muted">No status data</span>'}</div>
         ${b.priorityColId ? `<div class="chips-row-label">Priority</div><div class="chips">${priorityChips || '<span class="muted">No priority data</span>'}</div>` : ''}
@@ -1905,6 +2228,94 @@ function renderProjectCards() {
 
   slot.innerHTML = cardsHtml || '<p class="muted" style="padding:0 4px;">No boards to show.</p>';
   wireAutoScrollLists();
+  wireCardDragAndDrop();
+  wireCardResizeObserver();
+}
+
+// Drag-to-reorder: only the small grip (.card-drag-handle) in the title bar
+// is draggable, not the whole card — the card is full of real links and
+// scrollable lists that need their normal click/scroll behavior. Dragging
+// the handle still lets the browser drag the *card* (dragstart bubbles from
+// the handle, and dataTransfer is set there), so dropping onto another
+// card's position works the same as if the whole card were draggable.
+function wireCardDragAndDrop() {
+  const slot = document.getElementById('project-cards-slot');
+  let draggedId = null;
+
+  slot.querySelectorAll('.card-drag-handle').forEach(handle => {
+    handle.addEventListener('dragstart', e => {
+      const card = handle.closest('.card');
+      draggedId = card.getAttribute('data-board-id');
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', draggedId); // required by Firefox for drag to initiate at all
+      e.dataTransfer.setDragImage(card, 24, 24); // drag the whole card as the ghost image, not just the tiny handle glyph
+    });
+    handle.addEventListener('dragend', () => {
+      slot.querySelectorAll('.card').forEach(c => c.classList.remove('dragging', 'drag-over'));
+      draggedId = null;
+    });
+  });
+
+  slot.querySelectorAll('.card').forEach(card => {
+    card.addEventListener('dragover', e => {
+      if (!draggedId) return;
+      e.preventDefault(); // required for drop to be allowed at all
+      if (card.getAttribute('data-board-id') !== draggedId) card.classList.add('drag-over');
+    });
+    card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      const targetId = card.getAttribute('data-board-id');
+      if (!draggedId || targetId === draggedId) return;
+
+      const current = orderedProjectBoards().map(b => String(b.id));
+      const from = current.indexOf(draggedId);
+      const to = current.indexOf(targetId);
+      if (from === -1 || to === -1) return;
+      current.splice(from, 1);
+      current.splice(current.indexOf(targetId), 0, draggedId);
+      saveCardOrder(current);
+      renderProjectCards();
+    });
+  });
+}
+
+// Persists a card's user-resized width/height (native CSS `resize: both` on
+// .card, see its rule) — ResizeObserver fires on any size change to the
+// element's box regardless of what caused it (mouse drag on the resize
+// handle, in this case), so there's no need for custom mousedown/mousemove
+// tracking. Debounced per board so dragging the handle doesn't spam
+// localStorage on every intermediate frame.
+let cardResizeObserver = null;
+const cardResizeSaveTimers = {};
+function wireCardResizeObserver() {
+  // renderProjectCards() replaces every card's DOM node on each loadAll()
+  // (every 5-10 min, indefinitely on this kiosk-style display) — disconnect
+  // first so the observer doesn't keep accumulating references to detached,
+  // no-longer-visible card elements from every previous render forever.
+  if (cardResizeObserver) cardResizeObserver.disconnect();
+  if (!cardResizeObserver) {
+    cardResizeObserver = new ResizeObserver(entries => {
+      entries.forEach(entry => {
+        const boardId = entry.target.getAttribute('data-board-id');
+        if (!boardId) return;
+        // getBoundingClientRect() (not entry.contentRect) because box-sizing
+        // is border-box globally — contentRect excludes padding/border, and
+        // reapplying that as a plain CSS width/height on a border-box
+        // element would shrink the card a little more on every save/reload
+        // cycle instead of round-tripping to the same visual size.
+        const rect = entry.target.getBoundingClientRect();
+        clearTimeout(cardResizeSaveTimers[boardId]);
+        cardResizeSaveTimers[boardId] = setTimeout(() => {
+          const sizes = { ...cardSizes, [boardId]: { width: Math.round(rect.width), height: Math.round(rect.height) } };
+          saveCardSizes(sizes);
+        }, 400);
+      });
+    });
+  }
+  document.querySelectorAll('#project-cards-slot .card').forEach(card => cardResizeObserver.observe(card));
 }
 
 // Auto-scroll ("both scrollable and auto-cycling", per product decision):
@@ -1951,6 +2362,7 @@ document.getElementById('disconnect-btn').addEventListener('click', () => {
   location.reload();
 });
 document.getElementById('edit-boards-btn').addEventListener('click', () => openPicker(true));
+document.getElementById('reset-layout-btn').addEventListener('click', resetLayout);
 document.getElementById('picker-search').addEventListener('input', e => renderPickerList(e.target.value));
 document.getElementById('picker-cancel-btn').addEventListener('click', () => showDashboard());
 document.getElementById('picker-save-btn').addEventListener('click', () => {
