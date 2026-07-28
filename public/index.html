@@ -1836,15 +1836,15 @@ function renderPersonPopup(name) {
   `;
 }
 
-// Not real individuals to track check-in/checkout or task activity for —
-// Frizzon Accounts Department is a shared/service account, Achal Manglik is
-// the CEO viewing this dashboard (excluded per his own request), and Diana
-// is a monday.com AI agent (kind: personal_agent_member, "Outreach
-// Autopilot"), not a person. Hidden from the People sidebar (and therefore
-// from the person-search filter/popup too, since both read from
-// peopleList) rather than fetched-and-hidden, so they never show up
-// anywhere a "person" is listed.
-const HIDDEN_PEOPLE_NAMES = new Set(['Frizzon Accounts Department', 'Achal Manglik', 'Diana']);
+// Not real individuals to track check-in/checkout status for — Frizzon
+// Accounts Department is a shared/service account, Achal Manglik is the CEO
+// viewing this dashboard, Diana is a monday.com AI agent (kind:
+// personal_agent_member, "Outreach Autopilot"), not a person, and
+// venkatesh iyer is excluded per the same request. Deliberately only
+// filtered out of the People sidebar's own render (see renderPeopleSidebar)
+// rather than out of peopleList itself — they should still be findable via
+// the person-search filter/popup, just not shown in the check-in list.
+const HIDDEN_PEOPLE_NAMES = new Set(['Frizzon Accounts Department', 'Achal Manglik', 'Diana', 'venkatesh iyer']);
 
 // The people sidebar is the single roster of people — roster-first (from
 // allUsersCache, which fetchAllUsers() already restricts to enabled users)
@@ -1866,7 +1866,6 @@ function buildPeopleList() {
     : Object.keys(counts);
 
   peopleList = roster
-    .filter(name => !HIDDEN_PEOPLE_NAMES.has(name))
     .map(name => ({ name, count: counts[name] || 0 }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
@@ -1947,17 +1946,22 @@ function renderPeopleSidebar() {
   if (statuses) statuses.forEach(s => { statusByName[s.name] = s.status; });
   const afterGateHour = new Date().getHours() >= CHECKIN_HOUR_GATE;
 
+  // HIDDEN_PEOPLE_NAMES (Accounts Dept, the CEO viewing this, an AI agent,
+  // etc.) are excluded from this list specifically — peopleList itself
+  // stays untouched so they're still findable via the person-search filter.
+  const visibleList = peopleList.filter(p => !HIDDEN_PEOPLE_NAMES.has(p.name));
+
   // Not currently active (never checked in today, OR already checked out)
   // sorts to the top — this is the "who isn't working right now" review
   // list — with people still checked in pushed below. .sort() is stable, so
   // the existing by-task-count order (from buildPeopleList) is preserved
   // within each of the two groups.
   const orderedList = statuses
-    ? [...peopleList].sort((a, b) => {
+    ? [...visibleList].sort((a, b) => {
         const rank = name => (statusByName[name] === 'in' ? 1 : 0);
         return rank(a.name) - rank(b.name);
       })
-    : peopleList;
+    : visibleList;
 
   listEl.innerHTML = orderedList.map(p => {
     let dot = '';
