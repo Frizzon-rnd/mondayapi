@@ -1836,6 +1836,16 @@ function renderPersonPopup(name) {
   `;
 }
 
+// Not real individuals to track check-in/checkout or task activity for —
+// Frizzon Accounts Department is a shared/service account, Achal Manglik is
+// the CEO viewing this dashboard (excluded per his own request), and Diana
+// is a monday.com AI agent (kind: personal_agent_member, "Outreach
+// Autopilot"), not a person. Hidden from the People sidebar (and therefore
+// from the person-search filter/popup too, since both read from
+// peopleList) rather than fetched-and-hidden, so they never show up
+// anywhere a "person" is listed.
+const HIDDEN_PEOPLE_NAMES = new Set(['Frizzon Accounts Department', 'Achal Manglik', 'Diana']);
+
 // The people sidebar is the single roster of people — roster-first (from
 // allUsersCache, which fetchAllUsers() already restricts to enabled users)
 // so someone with zero assigned tasks still shows up, and so a deleted/
@@ -1856,6 +1866,7 @@ function buildPeopleList() {
     : Object.keys(counts);
 
   peopleList = roster
+    .filter(name => !HIDDEN_PEOPLE_NAMES.has(name))
     .map(name => ({ name, count: counts[name] || 0 }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
