@@ -512,7 +512,16 @@
      growing the card wider or clipping/overlapping neighboring cards. */
   .chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
   .chips:last-of-type { margin-bottom: 12px; }
-  .count-chip { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 10px; flex-shrink: 0; }
+  .count-chip { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 10px; flex-shrink: 0; cursor: pointer; border: 1px solid transparent; transition: transform .08s ease, border-color .12s ease; }
+  .count-chip:hover { transform: translateY(-1px); }
+  .count-chip.active { border-color: currentColor; }
+  .card-filter-banner {
+    display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim);
+    background: var(--surface-2); border-radius: 8px; padding: 6px 10px; margin-bottom: 10px;
+  }
+  .card-filter-banner strong { color: var(--text); }
+  .card-filter-clear { margin-left: auto; cursor: pointer; color: var(--text-faint); font-weight: 700; padding: 0 2px; }
+  .card-filter-clear:hover { color: var(--danger); }
   .recent-list {
     list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border-soft);
     max-height: 270px; overflow-y: auto; scroll-behavior: smooth;
@@ -678,7 +687,20 @@ const CHECKIN_BOARD_PATTERN = /check[\s-]?in/i;
 // columns" situation as CLAUDE.md quirk #1/#7). Whichever of the two came
 // LAST today decides the dot: still green if their latest comment today was
 // a check-in, red again once it's a check-out — see computeCheckinStatuses.
+// Matched against the comment's FIRST LINE ONLY, not the whole body — every
+// real check-out comment in the account leads with the "check out" label as
+// its own line ("Check out update", "CHECK-OUT: 21 May..."), but at least
+// one person's daily check-IN routinely includes "Follow up on check-in/
+// check-outs" as a task bullet further down the message (that's literally
+// part of her job) — matching the whole body misread that as an actual
+// check-out and showed her as checked out all day despite never checking
+// out. First-line-only avoids that false positive while still catching
+// every genuine check-out format seen in this account.
 const CHECKOUT_PATTERN = /check[\s-]?out/i;
+function isCheckoutComment(textBody) {
+  const firstLine = (textBody || '').split('\n')[0];
+  return CHECKOUT_PATTERN.test(firstLine);
+}
 // "Focus View" split (Project Manager Frizzon board): that board has a
 // second status/color-typed column literally titled "Label" (distinct from
 // its "Status" column) whose values are "Project", "Pitches", "Follow
@@ -726,6 +748,13 @@ let selectedPerson = null;
 // above the cards, distinct from selectedPerson (which just tracks the
 // popup opened from the People sidebar).
 let personFilter = null;
+// Per-card status/priority drill-down — { [boardId]: { type: 'status'|'priority', value } }
+// — set by clicking a count chip in that card's Status/Priority row (see
+// wireCardFilterChips). Scoped per board, not global like personFilter,
+// since "show me every item in this status" is a per-board question (the
+// same status label can mean different things, or not exist at all, on a
+// different board).
+let cardFilters = {};
 let personDataCache = {}; // { personName: { boardId: [items...] } }
 let checkinCache = {};    // { personName: [{boardName, updates:[{id,text_body,created_at,creator}]}] }
 let recentUpdates = [];  // latest account-wide comments snapshot, refreshed on every feed poll
@@ -742,6 +771,20 @@ let recentUpdates = [];  // latest account-wide comments snapshot, refreshed on 
 // regardless of what happens afterward.
 let commentFeed = [];
 let seenUpdateIds = new Set();
+
+// Per-person "most recent check-in-board comment seen this session" —
+// deliberately NOT capped like commentFeed above. commentFeed trims from its
+// oldest end once it passes COMMENT_FEED_MAX, and on a busy account that cap
+// is shared across every tracked board's comments, not just the check-in
+// board's — so an early check-in comment could get evicted by later
+// unrelated comments on OTHER tracked boards before that person ever checks
+// out, making computeCheckinStatuses() see "no comment today" and their dot
+// revert to red for no real reason (this was the actual cause of "checked in
+// but the dot stayed red" reports — confirmed by comparing commentFeed's
+// eviction behavior against real account comment volume). Status only ever
+// needs each person's single latest check-in-board comment, so this is
+// tracked separately and is never trimmed.
+let latestCheckinCommentByName = {};
 let feedPollTimer = null;
 const COMMENT_POLL_MS = 60000;
 const COMMENT_FEED_MAX = 300;
@@ -787,6 +830,7 @@ function saveSelectedBoardIds(ids) {
   // boards no longer tracked, so start it fresh rather than filter it.
   commentFeed = [];
   seenUpdateIds = new Set();
+  latestCheckinCommentByName = {};
 }
 
 function loadSelectedWorkspaceId() {
@@ -1620,11 +1664,20 @@ async function fetchRecentUpdates() {
 // snapshot window. Trims from the tail (oldest) once over the cap.
 function mergeIntoCommentFeed(updates) {
   let addedAny = false;
+  const checkinBoardNames = new Set(boardsData.filter(b => b.isCheckin).map(b => b.name));
   updates.forEach(u => {
     if (!seenUpdateIds.has(u.id)) {
       seenUpdateIds.add(u.id);
       commentFeed.push(u);
       addedAny = true;
+    }
+    // Tracked independently of commentFeed's cap — see latestCheckinCommentByName above.
+    const board = u.item && u.item.board;
+    if (board && u.creator && checkinBoardNames.has(board.name)) {
+      const existing = latestCheckinCommentByName[u.creator.name];
+      if (!existing || new Date(u.created_at) > new Date(existing.created_at)) {
+        latestCheckinCommentByName[u.creator.name] = u;
+      }
     }
   });
   if (addedAny) {
@@ -1632,6 +1685,50 @@ function mergeIntoCommentFeed(updates) {
     if (commentFeed.length > COMMENT_FEED_MAX) commentFeed.length = COMMENT_FEED_MAX;
   }
   return addedAny;
+}
+
+// Direct, check-in-board-scoped fallback for check-in status — bypasses the
+// account-wide updates(limit:100) snapshot entirely (see quirk #9 in
+// CLAUDE.md). That snapshot only ever returns the 100 MOST RECENT updates
+// across the WHOLE monday.com account (every tracked board's comments AND
+// everything else happening account-wide), so on a chatty account an early
+// check-in comment can fall out of that window — and never be captured by
+// any poll — well before its author checks out. The commentFeed/
+// latestCheckinCommentByName accumulation elsewhere only helps once a
+// comment has actually been SEEN at least once; it can't recover one that
+// never made it into a snapshot in the first place. The check-in roster is
+// small (well under 100 items), so asking monday directly for each item's
+// own last few comments is cheap and immune to unrelated account-wide
+// chatter — this is the same "read the item's own comment thread directly"
+// approach fetchCheckinForPerson uses for a single person, just batched for
+// the whole roster in one request per check-in board.
+async function fetchCheckinBoardComments() {
+  const checkinBoards = boardsData.filter(b => b.isCheckin);
+  for (const b of checkinBoards) {
+    try {
+      const data = await mondayQuery(`
+        query ($id: ID!) {
+          boards(ids: [$id]) {
+            items_page(limit: 200) {
+              items { updates(limit: 3) { id text_body created_at creator { name } } }
+            }
+          }
+        }
+      `, { id: b.id });
+      const items = (data.boards && data.boards[0] && data.boards[0].items_page && data.boards[0].items_page.items) || [];
+      items.forEach(it => {
+        (it.updates || []).forEach(u => {
+          if (!u.creator) return;
+          const existing = latestCheckinCommentByName[u.creator.name];
+          if (!existing || new Date(u.created_at) > new Date(existing.created_at)) {
+            latestCheckinCommentByName[u.creator.name] = u;
+          }
+        });
+      });
+    } catch (e) {
+      // Transient failure — the account-wide poll below still covers most cases.
+    }
+  }
 }
 
 // Fast poll (every COMMENT_POLL_MS) dedicated to the live comment feed —
@@ -1644,6 +1741,11 @@ async function refreshCommentFeed() {
     mergeIntoCommentFeed(updates);
   } catch (e) {
     // Transient failure — keep showing whatever the feed already has.
+  }
+  try {
+    await fetchCheckinBoardComments();
+  } catch (e) {
+    // Transient failure — ignore, the account-wide poll above is the primary path.
   }
   lastCommentsRefreshAt = Date.now();
   renderFast();
@@ -2048,24 +2150,13 @@ function computeCheckinStatuses() {
   const checkinBoards = boardsData.filter(b => b.isCheckin);
   if (!checkinBoards.length || !allUsersCache || !allUsersCache.length) return null;
 
-  const checkinBoardNames = new Set(checkinBoards.map(b => b.name));
   const today = new Date().toDateString();
-  const latestTodayByName = {};
-  commentFeed.forEach(u => {
-    if (!u.item || !u.item.board || !checkinBoardNames.has(u.item.board.name)) return;
-    if (!u.creator) return;
-    if (new Date(u.created_at).toDateString() !== today) return;
-    const existing = latestTodayByName[u.creator.name];
-    if (!existing || new Date(u.created_at) > new Date(existing.created_at)) {
-      latestTodayByName[u.creator.name] = u;
-    }
-  });
 
   return allUsersCache.map(p => {
-    const latest = latestTodayByName[p.name];
+    const latest = latestCheckinCommentByName[p.name];
     let status;
-    if (!latest) status = 'none';
-    else status = CHECKOUT_PATTERN.test(latest.text_body || '') ? 'out' : 'in';
+    if (!latest || new Date(latest.created_at).toDateString() !== today) status = 'none';
+    else status = isCheckoutComment(latest.text_body) ? 'out' : 'in';
     return { name: p.name, status };
   });
 }
@@ -2109,15 +2200,32 @@ function renderProjectCards() {
     // Every distinct status/priority gets its own chip — no cap, nothing
     // hidden behind a "+N more" that then has to overlap or clip into
     // neighboring cards to be readable. The row just wraps (see .chips).
-    const chipRow = counts => {
+    // Each chip is also a drill-down toggle (see cardFilters/
+    // wireCardFilterChips below) — clicking "Done · 5" filters this card's
+    // task list down to just those 5 items, clicking it again clears it.
+    const activeFilter = cardFilters[b.id];
+    const chipRow = (counts, type) => {
       const entries = Object.entries(counts).sort((a, c) => c[1] - a[1]);
-      return entries.map(([label, count]) => `
-        <span class="count-chip" style="background:${statusColor(label)}26;color:${statusColor(label)}">${escapeHtml(label)} · ${count}</span>
-      `).join('');
+      return entries.map(([label, count]) => {
+        const isActive = activeFilter && activeFilter.type === type && activeFilter.value === label;
+        return `
+        <span class="count-chip${isActive ? ' active' : ''}" data-filter-type="${type}" data-filter-value="${escapeHtml(label)}" style="background:${statusColor(label)}${isActive ? '55' : '26'};color:${statusColor(label)}">${escapeHtml(label)} · ${count}</span>
+      `;
+      }).join('');
     };
 
-    const statusChips = chipRow(statusCounts);
-    const priorityChips = b.priorityColId ? chipRow(priorityCounts) : '';
+    const statusChips = chipRow(statusCounts, 'status');
+    const priorityChips = b.priorityColId ? chipRow(priorityCounts, 'priority') : '';
+
+    // Applied AFTER the counts above are computed, so the chips themselves
+    // always reflect the full active set (and stay clickable to switch to a
+    // different status/priority) even while the task list below is narrowed.
+    const displayItems = activeFilter
+      ? activeItems.filter(it => {
+          const colId = activeFilter.type === 'status' ? b.statusColId : b.priorityColId;
+          return (itemColumnText(it, colId) || (activeFilter.type === 'status' ? 'No status' : 'No priority')) === activeFilter.value;
+        })
+      : activeItems;
 
     // Left-edge accent color, so a whole grid of cards can be read at a
     // glance instead of having to open/read each one individually: red if
@@ -2179,7 +2287,7 @@ function renderProjectCards() {
       </li>
     `;
 
-    const recent = [...activeItems]
+    const recent = [...displayItems]
       .sort((a, c) => new Date(effectiveActivityTime(c)) - new Date(effectiveActivityTime(a)))
       .slice(0, 200)
       .map(it => recentItemRow(it, statusColor(itemColumnText(it, b.statusColId))))
@@ -2194,7 +2302,7 @@ function renderProjectCards() {
       const FOCUS_PROJECT_COLOR = '#00c875';
       const FOCUS_PITCH_COLOR = '#ffcb00';
       const labelOf = it => itemColumnText(it, b.labelColId) || '';
-      const visible = activeItems.filter(it => !FOCUS_HIDDEN_LABEL_PATTERN.test(labelOf(it)));
+      const visible = displayItems.filter(it => !FOCUS_HIDDEN_LABEL_PATTERN.test(labelOf(it)));
       const projectItems = visible.filter(it => FOCUS_PROJECT_PATTERN.test(labelOf(it)));
       const pitchItems = visible.filter(it => FOCUS_PITCH_PATTERN.test(labelOf(it)));
 
@@ -2226,6 +2334,13 @@ function renderProjectCards() {
     const savedSize = cardSizes[String(b.id)];
     const sizeStyle = savedSize ? `width:${savedSize.width}px;height:${savedSize.height}px;` : '';
 
+    const filterBanner = activeFilter ? `
+      <div class="card-filter-banner" data-board-id="${b.id}">
+        Showing ${activeFilter.type}: <strong>${escapeHtml(activeFilter.value)}</strong> (${displayItems.length})
+        <span class="card-filter-clear" data-board-id="${b.id}" title="Clear filter">✕</span>
+      </div>
+    ` : '';
+
     return `
       <div class="card" data-board-id="${b.id}" style="border-left-color:${accentColor};${sizeStyle}">
         <div class="card-title">
@@ -2236,7 +2351,8 @@ function renderProjectCards() {
         <div class="chips-row-label">Status</div>
         <div class="chips">${statusChips || '<span class="muted">No status data</span>'}</div>
         ${b.priorityColId ? `<div class="chips-row-label">Priority</div><div class="chips">${priorityChips || '<span class="muted">No priority data</span>'}</div>` : ''}
-        ${b.labelColId ? focusHtml : `<ul class="recent-list" data-board-id="${b.id}">${recent || '<li class="muted">No active items</li>'}</ul>`}
+        ${filterBanner}
+        ${b.labelColId ? focusHtml : `<ul class="recent-list" data-board-id="${b.id}">${recent || '<li class="muted">No items match this filter.</li>'}</ul>`}
       </div>
     `;
   }).join('');
@@ -2245,6 +2361,37 @@ function renderProjectCards() {
   wireAutoScrollLists();
   wireCardDragAndDrop();
   wireCardResizeObserver();
+  wireCardFilterChips();
+}
+
+// Click a Status/Priority count chip to drill down to just the items with
+// that value (see cardFilters/displayItems above); click the same chip
+// again, or the ✕ on the filter banner, to clear it. Rewired on every
+// render since cards are rebuilt via innerHTML each time — same pattern as
+// wireCardDragAndDrop/wireCardResizeObserver below.
+function wireCardFilterChips() {
+  const slot = document.getElementById('project-cards-slot');
+  slot.querySelectorAll('.count-chip[data-filter-type]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const card = chip.closest('.card');
+      const boardId = card.getAttribute('data-board-id');
+      const type = chip.getAttribute('data-filter-type');
+      const value = chip.getAttribute('data-filter-value');
+      const current = cardFilters[boardId];
+      if (current && current.type === type && current.value === value) {
+        delete cardFilters[boardId];
+      } else {
+        cardFilters[boardId] = { type, value };
+      }
+      renderProjectCards();
+    });
+  });
+  slot.querySelectorAll('.card-filter-clear').forEach(btn => {
+    btn.addEventListener('click', () => {
+      delete cardFilters[btn.getAttribute('data-board-id')];
+      renderProjectCards();
+    });
+  });
 }
 
 // Drag-to-reorder: only the small grip (.card-drag-handle) in the title bar

@@ -158,30 +158,78 @@ also documented inline as a code comment near where it's handled.
    unrelated comments happen elsewhere in the account between one fetch and the next, an
    older tracked-board comment can fall out of that top-100 window entirely — this is
    exactly what caused check-in comments to appear "an hour old" even though the person
-   had checked in recently: by the time the (then 5-minute) poll ran again, other
-   account activity had already pushed that comment past position 100. Fix: poll far
-   more often (every `COMMENT_POLL_MS`, currently 9s) and accumulate results
-   client-side (`commentFeed`/`seenUpdateIds` in `mergeIntoCommentFeed()`) instead of
-   replacing the displayed list with each raw snapshot — once a comment has been seen,
-   it stays in the feed regardless of what the API returns afterward. This is a
-   mitigation, not a structural fix: on an extremely chatty account it's still
-   theoretically possible for >100 comments to land between two 9-second polls. The
-   real fix is webhooks (see "Next task").
+   had checked in recently: by the time the next poll ran, other account activity had
+   already pushed that comment past position 100. Mitigated by polling relatively often
+   (every `COMMENT_POLL_MS`, currently 60s) and accumulating results client-side
+   (`commentFeed`/`seenUpdateIds` in `mergeIntoCommentFeed()`) instead of replacing the
+   displayed list with each raw snapshot — once a comment has been seen, it stays in the
+   feed regardless of what the API returns afterward.
+
+   This mitigation has two more layers worth knowing about, both added after real
+   "checked in but the dot stayed red" reports traced back to this same root cause:
+   - **`commentFeed`'s own cap re-introduces the same failure mode.** `commentFeed` is
+     capped at `COMMENT_FEED_MAX` (300) and trimmed from its *oldest* end once full —
+     but that cap is shared across every tracked board's comments, not just the
+     check-in board's, so on a busy day an early check-in comment could get evicted by
+     later unrelated comments on OTHER tracked boards before that person ever checked
+     out. Fixed by tracking each person's latest check-in-board comment in a **separate,
+     uncapped** map (`latestCheckinCommentByName`, populated in `mergeIntoCommentFeed()`)
+     that `computeCheckinStatuses()` reads instead of re-scanning `commentFeed` — see
+     the comment above its declaration near the top of the `<script>`.
+   - **A comment that fell out of the top-100 window before ANY poll ever saw it can't
+     be recovered by the accumulator above** — accumulation only helps once something
+     has actually been observed at least once. `fetchCheckinBoardComments()` closes this
+     gap by bypassing the account-wide snapshot entirely for check-in purposes: it
+     queries the check-in board directly (~70 items, cheap) for each item's own last few
+     comments, immune to unrelated account-wide chatter, the same "read the item's own
+     comment thread directly" approach `fetchCheckinForPerson()` already used for a
+     single person, just batched for the whole roster and run on every
+     `refreshCommentFeed()` poll alongside the account-wide fetch.
+
+   On an extremely chatty account it's still theoretically possible to miss something
+   between polls of either path. The real structural fix is still webhooks (see "Next
+   task").
 
 10. **Check-in and check-out are the same kind of comment, distinguished only by text,
-    not a column.** Confirmed against real account comments (e.g. "CHECK-OUT: 21 May
-    2026...", "Check out update: ...") — employees post a "Check In" comment in the
-    morning and a separate "Check Out" comment later on the *same* per-employee item on
-    the check-in board; monday.com has no structured field marking which is which (same
-    "comments, not columns" situation as quirk #1/#7). `computeCheckinStatuses()` looks
-    at whichever of *today's* comments for a person came last and classifies it with
-    `CHECKOUT_PATTERN` (`/check[\s-]?out/i`): if their most recent comment today is a
-    check-out, their status is `'out'` (red dot again) rather than staying green for the
-    rest of the day just because they posted a check-in-shaped comment earlier. If they
-    haven't posted anything today at all, status is `'none'` (red after
-    `CHECKIN_HOUR_GATE`, gray before). The People sidebar (`renderPeopleSidebar()`) also
-    sorts anyone not currently `'in'` to the top of the list, ahead of the normal
-    by-task-count order, so "who isn't working right now" is the first thing visible.
+    not a column — and only the FIRST LINE of that text should be trusted.** Confirmed
+    against real account comments (e.g. "CHECK-OUT: 21 May 2026...", "Check out
+    update: ...") — employees post a "Check In" comment in the morning and a separate
+    "Check Out" comment later on the *same* per-employee item on the check-in board;
+    monday.com has no structured field marking which is which (same "comments, not
+    columns" situation as quirk #1/#7). `computeCheckinStatuses()` looks at whichever of
+    *today's* comments for a person came last and classifies it via `isCheckoutComment()`:
+    if their most recent comment today is a check-out, their status is `'out'` (red dot
+    again) rather than staying green for the rest of the day just because they posted a
+    check-in-shaped comment earlier. If they haven't posted anything today at all,
+    status is `'none'` (red after `CHECKIN_HOUR_GATE`, gray before). The People sidebar
+    (`renderPeopleSidebar()`) also sorts anyone not currently `'in'` to the top of the
+    list, ahead of the normal by-task-count order, so "who isn't working right now" is
+    the first thing visible.
+
+    `isCheckoutComment()` matches `CHECKOUT_PATTERN` (`/check[\s-]?out/i`) against only
+    the comment's **first line**, not the whole body — this was a real bug, not a
+    defensive choice made up front. One person's (Arshiya Hashmi's) daily check-in
+    routinely lists "Follow up on check-in/**check-outs**" as one of her own task
+    bullets further down the message (following up on everyone ELSE's check-ins is
+    literally her job as Monday Manager) — matching the whole body caught that
+    incidental mention and showed her as checked out all day despite her comment clearly
+    being headed "CHECK-IN" and her never posting an actual check-out. Every genuine
+    check-out comment found in this account puts the "check out" label as its own first
+    line/header ("Check out update", "CHECK-OUT: 21 May...", "20/05/2026 - Check out
+    Update:"), so restricting the match to the first line fixes the false positive
+    without missing any real check-out format seen so far. If a future check-out
+    message ever puts the label on a later line, this heuristic would need revisiting.
+
+11. **Not every enabled monday.com "user" is a real individual to track check-in status
+    for.** The account has shared/service accounts (e.g. "Frizzon Accounts Department"),
+    the CEO viewing this dashboard himself (doesn't need to check in on his own
+    dashboard), and even a monday.com AI agent (`kind: personal_agent_member` — "Diana",
+    an "Outreach Autopilot" agent, not a person at all). These are listed in
+    `HIDDEN_PEOPLE_NAMES` and filtered out specifically inside `renderPeopleSidebar()`'s
+    own render — **not** out of `peopleList` itself, so they're still findable via the
+    person-search filter/popup (see below); they just don't clutter the check-in list.
+    Exact names must match monday.com's `users` query output (verified via the monday.com
+    API before adding anyone) — a near-match would silently hide the wrong real person.
 
 ## Frontend state machine
 
@@ -209,7 +257,8 @@ Key state variables (all module-scope `let`s near the top of the `<script>`):
 - `boardsData` — full fetched detail (columns, items) for each selected board, rebuilt
   every `loadAll()` (auto every 5 min, or via "Refresh now").
 - `recentUpdates` — latest account-wide comments snapshot (replaced each poll); feeds
-  the check-in summary card (`renderCheckinBoardCard()`).
+  check-in status via `computeCheckinStatuses()` (see quirk #10 — there's no separate
+  check-in summary card anymore; status is tri-state dots in the People sidebar).
 - `commentFeed` / `seenUpdateIds` — the ever-growing, deduped list behind the live
   comment feed sidebar (see below). Unlike `recentUpdates`, this only ever grows within
   a given board selection; reset in `saveSelectedBoardIds()` whenever the tracked boards
@@ -224,13 +273,16 @@ a scrollable, chat-like panel — newest comment on top, full scrollback below, 
 `COMMENT_FEED_MAX` (300) entries.
 
 - `refreshCommentFeed()` runs on its own interval (`feedPollTimer`, every
-  `COMMENT_POLL_MS` = 9000ms) — separate from the 5-minute `loadAll()` board refresh,
+  `COMMENT_POLL_MS` = 60000ms) — separate from the 10-minute `loadAll()` board refresh,
   since it's a much lighter query (`fetchRecentUpdates()`, no board/item nesting) and
-  safe to poll far more often.
+  safe to poll far more often. It also calls `fetchCheckinBoardComments()` on every
+  poll (see quirk #9) — a second, check-in-board-scoped fetch that keeps check-in status
+  correct even when the account-wide snapshot above can't be trusted.
 - `mergeIntoCommentFeed()` is what makes the feed feel "live" without needing websockets
   or webhooks: each poll's results are merged into `commentFeed` by id, not used to
   replace it — see quirk #9 for why a naive "just re-render the latest snapshot"
-  approach was actively wrong (it made check-in comments look stale).
+  approach was actively wrong (it made check-in comments look stale). It also feeds the
+  separate, uncapped `latestCheckinCommentByName` accumulator quirk #9 describes.
 - This is intentionally the simple, no-new-infrastructure option (polling + client-side
   accumulation). A genuinely instant, push-based version (monday.com webhooks + Server-
   Sent Events) was evaluated and deliberately deferred — see "Next task" below for what
@@ -274,6 +326,102 @@ happen to have the matching columns, not just the board they were originally bui
   (`isStaleUpdate`, `STALE_UPDATE_MS`) renders with a red-tinted row and a bold red
   timestamp — on every board, not just Focus View ones (falls back to `updated_at` where
   comment data wasn't fetched).
+- **Status/Priority chips are clickable drill-down filters.** Clicking a count chip
+  (e.g. "In Progress · 4") in a card's Status or Priority row narrows that card's task
+  list down to just the items with that value — a "Showing status: In Progress (4)"
+  banner appears with a ✕ to clear it, and the active chip gets an outline. Click the
+  same chip again to toggle it off. State lives in `cardFilters` (`{ [boardId]: { type:
+  'status'|'priority', value } }`), scoped per board (not global like `personFilter`),
+  since the same status label can mean something different — or not exist at all — on a
+  different board. Applied to `activeItems` to produce `displayItems` in
+  `renderProjectCards()`, AFTER the Status/Priority counts themselves are computed from
+  the full `activeItems` set, so the chips keep showing true totals and stay clickable
+  to switch to a different value even while the list below is filtered. Wired via
+  `wireCardFilterChips()`, called every render alongside `wireCardDragAndDrop()`/
+  `wireCardResizeObserver()` for the same reason (cards are rebuilt via `innerHTML` each
+  time). Works underneath the Focus View split too — `displayItems` feeds into the
+  Projects/Pitches grouping the same way `activeItems` used to.
+
+## Dashboard theme, person-search, and customizable layout
+
+The dashboard shipped as a plain light theme with a fixed CSS-grid card layout; it's
+since been reworked into a dark, CSS-variable-based theme with a fully user-customizable
+layout (drag-resize, drag-reorder), built for the "always-on office big-screen" use case
+this is actually used for.
+
+- **Dark theme via CSS variables.** All color/spacing decisions route through `:root`
+  custom properties (`--bg`, `--surface`, `--surface-2/3`, `--border`, `--text`,
+  `--text-dim`, `--text-faint`, `--accent`, `--success`, `--danger`, `--radius*`,
+  `--shadow*`) instead of hardcoded hex values — change the look by editing these, not by
+  hunting through every rule. Base type sizes were also bumped up across the board (card
+  titles, chips, timestamps) since this is read from across a room, not a laptop's lap.
+  `statusColor()`'s actual hex outputs (monday's own status-label colors) are
+  intentionally left alone — those are functional data, not theme decoration.
+- **Card left-edge accent color** (`accentColor` in `renderProjectCards()`): red if the
+  card has any stale (24h+) task (see quirk above on staleness), otherwise the color of
+  its single most common status. Lets the whole grid be read at a glance — which boards
+  need attention — without opening/reading every card individually.
+- **Motion, but selective.** Cards fade in on each `renderProjectCards()` call
+  (`cardIn` keyframe) and lift slightly on hover. The live comment feed specifically only
+  animates *genuinely new* rows (`lastRenderedCommentIds` diffed against the current
+  `commentFeed` in `renderCommentFeed()`) — animating every row on every 60s poll would
+  make the whole feed look like it's "flashing" instead of reading as live updates.
+- **Person-search filter** (`#person-search-input`, above the cards): type to search,
+  click a suggestion (or hit Enter on a single exact match) to set `personFilter` to that
+  person's name, which narrows every project card down to just their tasks
+  (`itemPeople(it, b.peopleCols).includes(personFilter)` in `renderProjectCards()`).
+  Clicking into the box with no text shows the full roster as a browsable dropdown
+  (`renderPersonSearchSuggestions`), not just once you start typing. Clearing the filter
+  (✕ button, or typing again) restores the normal unfiltered view. This reads from
+  `peopleList` directly — unaffected by `HIDDEN_PEOPLE_NAMES` above, since hiding someone
+  from the check-in list shouldn't make their tasks unfindable.
+- **Status/Priority chips show every distinct value now**, not a top-3-plus-"+N more"
+  cap — the row just wraps onto more lines. An earlier version capped and hid the rest
+  behind a clickable "+N more" popover, but that popover (positioned relative to the
+  chip) had to escape the card's `overflow` to be visible, which then let it visually
+  overlap into whichever card sat next to it — not worth the complexity for what "just
+  show everything, let it wrap" solves more simply and reliably.
+
+### Customizable layout: resize + reorder, for cards and for the three main panels
+
+Both the project cards (in `#boards-grid`) and the three top-level panels (People,
+Boards, Live comments, inside `#dashboard-body`) are independently resizable (native
+CSS `resize: both` on the corner) and reorderable (drag a handle: `.card-drag-handle` in
+each card's title, `.panel-drag-handle` in each panel's header). Layout is persisted to
+`localStorage` separately for the two levels (`monday_card_order`/`monday_card_sizes` for
+cards, `monday_panel_order`/`monday_panel_sizes` for panels) so a refresh or the periodic
+`loadAll()` doesn't reset something someone deliberately arranged. The "Reset layout"
+header button clears all four keys back to default.
+
+Two non-obvious implementation details worth re-reading before touching this:
+
+- **`#boards-grid` is `flex-wrap`, not CSS grid, on purpose.** Resizing a card needs to
+  reflow the cards after it — a grid's fixed track sizing won't do that, but a wrapping
+  flex row will.
+- **A flex item needs `flex: 0 0 auto` (not e.g. `flex: 1 1 480px`) for native `resize`
+  to actually work.** When `flex-basis` is an explicit length (not `auto`), flexbox
+  ignores the element's `width` property entirely for sizing — so a resized inline width
+  (from dragging the corner, or from `applyPanelSizes()`/`ResizeObserver` reapplying a
+  saved size) gets silently overridden back to the flex-basis on every layout pass, and
+  the resize handle looks like it does nothing. `.card`, `#people-col`,
+  `#comment-feed-col`, and `.main-col` all use `flex: 0 0 auto` + an explicit `width` for
+  exactly this reason. `.main-col`'s default width is a `calc(100vw - 660px)` guess at
+  "whatever People + Live comments don't use" (a real width value, not flex-grow, for the
+  same reason) — it's only a rough approximation and doesn't account for the other two
+  panels also having their own saved sizes, so on an unusual screen/window size the
+  Boards panel can end up narrower than expected, showing only one card per row even on a
+  big screen. Fastest fix if that happens: click "Reset layout." The more correct fix
+  (not yet done) is to have `applyPanelSizes()` measure the other panels' actual rendered
+  width and size Boards to fill what's genuinely left, only when Boards itself has no
+  saved size.
+- Both the card-level and panel-level ResizeObservers/drag-and-drop are wired via
+  `wireCardResizeObserver()`/`wireCardDragAndDrop()` (called on every `renderProjectCards()`,
+  since cards are rebuilt via `innerHTML` each time — the ResizeObserver explicitly
+  `disconnect()`s before re-observing so it doesn't keep accumulating references to
+  detached card elements forever) and `wireDashboardPanelResizeObserver()`/
+  `wireDashboardPanelDragAndDrop()` (called once via `initDashboardPanelLayout()` in
+  `showDashboard()`, guarded by `dashboardPanelsWired` since the panel elements are
+  static and never recreated, unlike cards).
 
 ## Known limitations / things not yet handled
 
@@ -290,7 +438,7 @@ happen to have the matching columns, not just the board they were originally bui
   unusual structure may not surface correctly without adjusting those heuristics.
 - The live comment feed's polling mitigation (quirk #9) is not a structural fix — on an
   extremely chatty account it's theoretically still possible to miss a comment between
-  two 9-second polls. Webhooks (see "Next task") are the real fix.
+  two polls. Webhooks (see "Next task") are the real fix.
 
 ## Hosting (done)
 
@@ -320,7 +468,7 @@ Deployed as a Render web service (Hobby/free workspace plan), auto-deploying fro
 
 ## Next task: real-time comments via monday.com webhooks (a.k.a. "Option B")
 
-The live comment feed currently works by **polling** (`refreshCommentFeed()` every 9s,
+The live comment feed currently works by **polling** (`refreshCommentFeed()` every 60s,
 see "Live comment feed" above) — good enough that it feels close to live, and it
 already fixed the "check-in comments look an hour old" bug. The next real upgrade is
 **push-based delivery**: monday.com fires a webhook the instant a comment is posted,
