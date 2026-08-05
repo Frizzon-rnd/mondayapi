@@ -190,24 +190,26 @@ also documented inline as a code comment near where it's handled.
    between polls of either path. The real structural fix is still webhooks (see "Next
    task").
 
-10. **Check-in and check-out are the same kind of comment, distinguished only by text,
-    not a column — and only the FIRST LINE of that text should be trusted.** Confirmed
-    against real account comments (e.g. "CHECK-OUT: 21 May 2026...", "Check out
-    update: ...") — employees post a "Check In" comment in the morning and a separate
-    "Check Out" comment later on the *same* per-employee item on the check-in board;
-    monday.com has no structured field marking which is which (same "comments, not
-    columns" situation as quirk #1/#7). `computeCheckinStatuses()` looks at whichever of
-    *today's* comments for a person came last and classifies it via `isCheckoutComment()`:
-    if their most recent comment today is a check-out, their status is `'out'` (red dot
-    again) rather than staying green for the rest of the day just because they posted a
-    check-in-shaped comment earlier. If they haven't posted anything today at all,
-    status is `'none'` (red after `CHECKIN_HOUR_GATE`, gray before). The People sidebar
-    (`renderPeopleSidebar()`) also sorts anyone not currently `'in'` to the top of the
-    list, ahead of the normal by-task-count order, so "who isn't working right now" is
-    the first thing visible.
+10. **Check-in, check-out, and "on duty" are all the same kind of comment,
+    distinguished only by text, not a column — and only the FIRST LINE of that text
+    should be trusted.** Confirmed against real account comments (e.g. "CHECK-OUT: 21
+    May 2026...", "Check out update: ...") — employees post a "Check In" comment in the
+    morning and a separate "Check Out" comment later on the *same* per-employee item on
+    the check-in board; some also post an "On Duty" comment on days they're working but
+    away from the usual check-in/out routine (e.g. a field visit). monday.com has no
+    structured field marking which is which (same "comments, not columns" situation as
+    quirk #1/#7). `computeCheckinStatuses()` looks at whichever of *today's* comments
+    for a person came last and classifies it via `isOnDutyComment()`/`isCheckoutComment()`
+    (on-duty checked first): `'duty'` (orange dot) beats `'out'` (red dot) beats
+    everything defaulting to `'in'` (green dot) — so someone doesn't stay green for the
+    rest of the day just because they posted a check-in-shaped comment earlier, and an
+    on-duty post doesn't get misread as a plain check-in. If they haven't posted
+    anything today at all, status is `'none'` (red after `CHECKIN_HOUR_GATE`, gray
+    before).
 
-    `isCheckoutComment()` matches `CHECKOUT_PATTERN` (`/check[\s-]?out/i`) against only
-    the comment's **first line**, not the whole body — this was a real bug, not a
+    `isOnDutyComment()`/`isCheckoutComment()` match `ONDUTY_PATTERN`
+    (`/on[\s-]?duty/i`) / `CHECKOUT_PATTERN` (`/check[\s-]?out/i`) against only the
+    comment's **first line**, not the whole body — this was a real bug, not a
     defensive choice made up front. One person's (Arshiya Hashmi's) daily check-in
     routinely lists "Follow up on check-in/**check-outs**" as one of her own task
     bullets further down the message (following up on everyone ELSE's check-ins is
@@ -217,8 +219,18 @@ also documented inline as a code comment near where it's handled.
     check-out comment found in this account puts the "check out" label as its own first
     line/header ("Check out update", "CHECK-OUT: 21 May...", "20/05/2026 - Check out
     Update:"), so restricting the match to the first line fixes the false positive
-    without missing any real check-out format seen so far. If a future check-out
-    message ever puts the label on a later line, this heuristic would need revisiting.
+    without missing any real check-out format seen so far. If a future check-out or
+    on-duty message ever puts the label on a later line, this heuristic would need
+    revisiting.
+
+    The People sidebar (`renderPeopleSidebar()`) sorts by dot color, **red → gray →
+    orange → green** (`COLOR_RANK` in `renderPeopleSidebar()`, built from the same
+    `checkinDotColor()` helper the dots themselves render from) — i.e. least-checked-in
+    first: anyone not checked in (red, or gray if it's before `CHECKIN_HOUR_GATE`) leads
+    the list, then anyone on duty (orange), then everyone currently checked in (green)
+    at the bottom. This was a deliberate product request (visibility into "who hasn't
+    checked in" before "who's on duty" before "who's checked in") — don't collapse it
+    back to a simple in-vs-not-in split without checking first.
 
 11. **Not every enabled monday.com "user" is a real individual to track check-in status
     for.** The account has shared/service accounts (e.g. "Frizzon Accounts Department"),
@@ -258,7 +270,8 @@ Key state variables (all module-scope `let`s near the top of the `<script>`):
   every `loadAll()` (auto every 5 min, or via "Refresh now").
 - `recentUpdates` — latest account-wide comments snapshot (replaced each poll); feeds
   check-in status via `computeCheckinStatuses()` (see quirk #10 — there's no separate
-  check-in summary card anymore; status is tri-state dots in the People sidebar).
+  check-in summary card anymore; status is four-state (in/out/duty/none) dots in the
+  People sidebar).
 - `commentFeed` / `seenUpdateIds` — the ever-growing, deduped list behind the live
   comment feed sidebar (see below). Unlike `recentUpdates`, this only ever grows within
   a given board selection; reset in `saveSelectedBoardIds()` whenever the tracked boards

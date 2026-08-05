@@ -701,6 +701,16 @@ function isCheckoutComment(textBody) {
   const firstLine = (textBody || '').split('\n')[0];
   return CHECKOUT_PATTERN.test(firstLine);
 }
+// "On Duty" is a third comment shape people post on the check-in board — used
+// when they're working but away from the usual check-in/out routine (e.g. a
+// field visit). Same first-line-only matching as isCheckoutComment, for the
+// same reason (avoid catching an incidental "on duty" mention buried later in
+// a longer message).
+const ONDUTY_PATTERN = /on[\s-]?duty/i;
+function isOnDutyComment(textBody) {
+  const firstLine = (textBody || '').split('\n')[0];
+  return ONDUTY_PATTERN.test(firstLine);
+}
 // "Focus View" split (Project Manager Frizzon board): that board has a
 // second status/color-typed column literally titled "Label" (distinct from
 // its "Status" column) whose values are "Project", "Pitches", "Follow
@@ -2053,14 +2063,23 @@ function renderPeopleSidebar() {
   // stays untouched so they're still findable via the person-search filter.
   const visibleList = peopleList.filter(p => !HIDDEN_PEOPLE_NAMES.has(p.name));
 
-  // Not currently active (never checked in today, OR already checked out)
-  // sorts to the top — this is the "who isn't working right now" review
-  // list — with people still checked in pushed below. .sort() is stable, so
-  // the existing by-task-count order (from buildPeopleList) is preserved
-  // within each of the two groups.
+  // Dot color, shared by both the sort below and the render — 'out'/no
+  // comment-yet-past-the-gate-hour are red (not checked in), a same-day
+  // 'none' before the gate hour is gray (too early to flag), 'duty' is
+  // orange, 'in' is green.
+  const checkinDotColor = status => status === 'in' ? '#00c875'
+    : status === 'duty' ? '#ff9800'
+    : (status === 'out' || afterGateHour ? '#df2f4a' : '#c4c4c4');
+
+  // Ordered red -> gray -> orange -> green, i.e. least-checked-in first —
+  // surfaces "who hasn't checked in" before "who's on duty" before "who's
+  // checked in", per product request. .sort() is stable, so the existing
+  // by-task-count order (from buildPeopleList) is preserved within each
+  // color group.
+  const COLOR_RANK = { '#df2f4a': 0, '#c4c4c4': 1, '#ff9800': 2, '#00c875': 3 };
   const orderedList = statuses
     ? [...visibleList].sort((a, b) => {
-        const rank = name => (statusByName[name] === 'in' ? 1 : 0);
+        const rank = name => COLOR_RANK[checkinDotColor(statusByName[name])];
         return rank(a.name) - rank(b.name);
       })
     : visibleList;
@@ -2068,8 +2087,7 @@ function renderPeopleSidebar() {
   listEl.innerHTML = orderedList.map(p => {
     let dot = '';
     if (statuses) {
-      const status = statusByName[p.name];
-      const color = status === 'in' ? '#00c875' : (status === 'out' || afterGateHour ? '#df2f4a' : '#c4c4c4');
+      const color = checkinDotColor(statusByName[p.name]);
       dot = `<span class="dot" style="background:${color}"></span>`;
     }
     return `
@@ -2140,11 +2158,12 @@ function renderCommentFeed() {
 // Reuses the already-polled commentFeed (see quirk #9 in CLAUDE.md) rather
 // than firing a fresh per-person query for every person in the account.
 //
-// Status is tri-state, based on whichever of today's comments for that
-// person came LAST (people post both a check-in and a check-out comment
-// over the course of a day — see CHECKOUT_PATTERN):
+// Status is based on whichever of today's comments for that person came
+// LAST (people post a check-in, a check-out, and sometimes an "on duty"
+// comment over the course of a day — see CHECKOUT_PATTERN/ONDUTY_PATTERN):
 //   'in'   — latest comment today was a check-in, still marked active.
 //   'out'  — latest comment today was a check-out, back to red.
+//   'duty' — latest comment today was an "on duty" post, shown orange.
 //   'none' — no comment today at all.
 function computeCheckinStatuses() {
   const checkinBoards = boardsData.filter(b => b.isCheckin);
@@ -2156,7 +2175,9 @@ function computeCheckinStatuses() {
     const latest = latestCheckinCommentByName[p.name];
     let status;
     if (!latest || new Date(latest.created_at).toDateString() !== today) status = 'none';
-    else status = isCheckoutComment(latest.text_body) ? 'out' : 'in';
+    else if (isOnDutyComment(latest.text_body)) status = 'duty';
+    else if (isCheckoutComment(latest.text_body)) status = 'out';
+    else status = 'in';
     return { name: p.name, status };
   });
 }
